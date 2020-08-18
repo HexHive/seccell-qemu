@@ -167,6 +167,10 @@ struct CPURISCVState {
 
     target_ulong satp;   /* since: priv-1.10.0 */
     target_ulong stval;
+    target_ulong usid;   /* seccell */
+    target_ulong urid;   /* seccell */
+    target_ulong sbadaddr;
+    target_ulong mbadaddr;
     target_ulong medeleg;
 
     target_ulong stvec;

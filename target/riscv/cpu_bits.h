@@ -178,6 +178,8 @@
 /* Supervisor Protection and Translation */
 #define CSR_SPTBR           0x180
 #define CSR_SATP            0x180
+#define CSR_USID            0x82
+#define CSR_URID            0x83
 
 /* Hpervisor CSRs */
 #define CSR_HSTATUS         0x600

@@ -1221,6 +1221,8 @@ static const char *csr_name(int csrno)
     case 0x0042: return "ucause";
     case 0x0043: return "utval";
     case 0x0044: return "uip";
+    case 0x0082: return "usid";
+    case 0x0083: return "urid";
     case 0x0100: return "sstatus";
     case 0x0102: return "sedeleg";
     case 0x0103: return "sideleg";

@@ -1049,6 +1049,39 @@ static RISCVException write_satp(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
+static RISCVException read_usid(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    if (!riscv_feature(env, RISCV_FEATURE_MMU)) {
+        *val = 0;
+        return RISCV_EXCP_NONE;
+    }
+    *val = env->satp;
+
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException read_urid(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    if (!riscv_feature(env, RISCV_FEATURE_MMU)) {
+        *val = 0;
+        return RISCV_EXCP_NONE;
+    }
+    *val = env->satp;
+
+    return RISCV_EXCP_NONE;
+}
+
+static RISCVException write_urid(CPURISCVState *env, int csrno, target_ulong val)
+{
+    if (!riscv_feature(env, RISCV_FEATURE_MMU)) {
+        return RISCV_EXCP_NONE;
+    }
+    env->urid = val;
+
+    return RISCV_EXCP_NONE;
+}
+
+
 /* Hypervisor Extensions */
 static RISCVException read_hstatus(CPURISCVState *env, int csrno,
                                    target_ulong *val)
@@ -1879,6 +1912,8 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
 
     /* Supervisor Protection and Translation */
     [CSR_SATP]     = { "satp",     smode, read_satp,    write_satp      },
+    [CSR_USID]     = { "usid",     smode, read_usid                     },
+    [CSR_URID]     = { "urid",     smode, read_urid,    write_urid      },
 
     [CSR_HSTATUS]     = { "hstatus",     hmode,   read_hstatus,     write_hstatus     },
     [CSR_HEDELEG]     = { "hedeleg",     hmode,   read_hedeleg,     write_hedeleg     },
