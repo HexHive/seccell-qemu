@@ -457,6 +457,33 @@ typedef enum {
 #define SATP64_ASID         0x0FFFF00000000000ULL
 #define SATP64_PPN          0x00000FFFFFFFFFFFULL
 
+//Atri: For the range table
+#define CELL_DESC_SZ  16
+#define CELL_PERM_SZ  8
+#define INVALID_CELL  -1ull
+#define RT_R          0x0000000000000002ull // Read
+#define RT_W          0x0000000000000004ull // Write
+#define RT_X          0x0000000000000008ull // Execute
+#define RT_G          0x0000000000000020ull // Global
+#define RT_A          0x0000000000000040ull // Accessed
+#define RT_D          0x0000000000000080ull // Dirty
+
+/* Shifts */
+#define RT_VA_START_SHIFT 0            // in 128-bit cell desc
+#define RT_VA_END_SHIFT   36           // in 128-bit cell desc
+#define RT_PA_SHIFT       72           // in 128-bit cell desc
+#define RT_PROT_SHIFT     1            // in 8-bit permissions
+/* Sizes */
+#define RT_VFN_SIZE       36
+#define RT_PFN_SIZE       44
+/* Masks */
+#define RT_VA_MASK        ((1ull << RT_VFN_SIZE) - 1) // 36 bits of VA
+#define RT_PA_MASK        ((1ull << RT_PFN_SIZE) - 1) // 44 bits of PA
+/* Special */
+#define RT_PERMS          (RT_R | RT_W | RT_X)
+#define RT_ID_ANY	        0xffff
+#define RT_ID_SUPERVISOR  0x0000
+
 /* VM modes (satp.mode) privileged ISA 1.10 */
 #define VM_1_10_MBARE       0
 #define VM_1_10_SV32        1
@@ -464,6 +491,8 @@ typedef enum {
 #define VM_1_10_SV48        9
 #define VM_1_10_SV57        10
 #define VM_1_10_SV64        11
+
+#define VM_SECCELL          15
 
 /* Page table entry (PTE) fields */
 #define PTE_V               0x001 /* Valid */

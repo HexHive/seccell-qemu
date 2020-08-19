@@ -468,7 +468,8 @@ static const char valid_vm_1_10_64[16] = {
     [VM_1_10_MBARE] = 1,
     [VM_1_10_SV39] = 1,
     [VM_1_10_SV48] = 1,
-    [VM_1_10_SV57] = 1
+    [VM_1_10_SV57] = 1,
+    [VM_SECCELL] = 1
 };
 
 /* Machine Information Registers */

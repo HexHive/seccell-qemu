@@ -509,12 +509,14 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
         *physical = addr;
         *prot = PAGE_READ | PAGE_WRITE | PAGE_EXEC;
         return TRANSLATE_SUCCESS;
+    case VM_SECCELL:
+      levels = 0; ptidxbits = 0; ptesize = 0; break;
     default:
       g_assert_not_reached();
     }
 
     CPUState *cs = env_cpu(env);
-    int va_bits = PGSHIFT + levels * ptidxbits + widened;
+    int va_bits = (vm == VM_SECCELL)? RT_VFN_SIZE + PGSHIFT + widened: PGSHIFT + levels * ptidxbits + widened;
     target_ulong mask, masked_msbs;
 
     if (TARGET_LONG_BITS > (va_bits - 1)) {
@@ -528,165 +530,300 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
         return TRANSLATE_FAIL;
     }
 
-    int ptshift = (levels - 1) * ptidxbits;
-    int i;
+#ifdef TARGET_RISCV64
+/* Simplifying assumptions */
+#if CELL_PERM_SZ != 8
+# error "get_physical_address() currently assumes cell permissions is 1byte only"
+#endif
+
+    if(vm == VM_SECCELL) {
+        /* Remove sign-extended bits from addr */
+        addr &= (1ULL << va_bits) - 1;
+
+        unsigned cell_count = 0;
+        while(1) {
+            hwaddr access_paddr = base + cell_count * CELL_DESC_SZ;
+
+            int pmp_prot;
+            int pmp_ret = get_physical_address_pmp(env, &pmp_prot, NULL, access_paddr,
+                                                sizeof(target_ulong),
+                                                MMU_DATA_LOAD, PRV_S);
+            if (pmp_ret != TRANSLATE_SUCCESS) {
+                return TRANSLATE_PMP_FAIL;
+            }
+
+            target_ulong word0 = address_space_ldq(cs->as, access_paddr, attrs, &res);
+            if (res != MEMTX_OK)
+                return TRANSLATE_FAIL;
+            target_ulong word1 = address_space_ldq(cs->as, access_paddr + TARGET_LONG_SIZE, attrs, &res);
+            if (res != MEMTX_OK)
+                return TRANSLATE_FAIL;
+
+            if((word0 == INVALID_CELL) && (word1 == INVALID_CELL))
+                break;
+            cell_count++;
+        }
+        unsigned S = 1;
+        unsigned R = (cell_count * CELL_DESC_SZ / 64) + 1;
+        while(S < R)
+            S <<= 1;
+        unsigned T = (S > CELL_DESC_SZ / CELL_PERM_SZ)?
+                      S * 64 * CELL_PERM_SZ / CELL_DESC_SZ: 64;
+
+        target_ulong usid = env->usid;
+        for(unsigned n = 0; n < cell_count; n++) {
+            hwaddr desc_addr = base + n * CELL_DESC_SZ;
+            hwaddr perm_addr = base + (S * 64) + (usid * T) + n;
+
+#ifdef __SIZEOF_INT128__
+typedef unsigned __int128 uint128_t;
+#endif
+            uint128_t cell_desc = address_space_ldq(cs->as, desc_addr + TARGET_LONG_SIZE, attrs, &res);
+            if (res != MEMTX_OK)
+                return TRANSLATE_FAIL;
+            cell_desc <<= TARGET_LONG_BITS;
+            cell_desc |= address_space_ldq(cs->as, desc_addr, attrs, &res);
+            if (res != MEMTX_OK)
+                return TRANSLATE_FAIL;
+
+            target_ulong va_start = ((cell_desc >> RT_VA_START_SHIFT) & RT_VA_MASK) << PGSHIFT;
+            target_ulong va_end = ((cell_desc >> RT_VA_END_SHIFT) & RT_VA_MASK) << PGSHIFT;
+            target_ulong addr_vpn = (addr >> PGSHIFT) << PGSHIFT;
+            if((addr_vpn > va_end) || (addr_vpn < va_start))
+                continue;
+
+            uint8_t perms = (uint8_t) address_space_ldq(cs->as, perm_addr, attrs, &res);
+
+            if (!(perms & (RT_R | RT_W | RT_X)))
+                /* No permissions, try a different cell */
+                continue;
+            else if ((perms & (RT_R | RT_W | RT_X)) == RT_W)
+                /* riscv: Write without read not allowed */
+                return TRANSLATE_FAIL;
+            else if ((perms & (RT_R | RT_W | RT_X)) == (RT_W | RT_X))
+                /* riscv: Write without read not allowed */
+                return TRANSLATE_FAIL;
+            else if (access_type == MMU_DATA_LOAD && !((perms & RT_R) ||
+                    ((perms & RT_X) && mxr)))
+                /* Read access check failed */
+                return TRANSLATE_FAIL;
+            else if (access_type == MMU_DATA_STORE && !(perms & RT_W))
+                /* Write access check failed */
+                return TRANSLATE_FAIL;
+            else if (access_type == MMU_INST_FETCH && !(perms & RT_X))
+                /* Fetch access check failed */
+                return TRANSLATE_FAIL;
+            else {
+                /* if necessary, set accessed and dirty bits. */
+                target_ulong updated_perms = perms | RT_A |
+                    (access_type == MMU_DATA_STORE ? RT_D : 0);
+
+                if (updated_perms != perms) {
+                    /* Atomicity concerns with MTTCG */
+                    MemoryRegion *mr;
+                    hwaddr l = 1, addr1;
+                    mr = address_space_translate(cs->as, perm_addr,
+                        &addr1, &l, false, MEMTXATTRS_UNSPECIFIED);
+                    if (memory_region_is_ram(mr)) {
+                        target_ulong *perm_pa =
+                            qemu_map_ram_ptr(mr->ram_block, addr1);
+
+                        /* MTTCG is not enabled on oversized TCG guests so
+                        * page table updates do not need to be atomic */
+                        *perm_pa = perms = updated_perms;
+                    } else {
+                        /* misconfigured PTE in ROM (AD bits are not preset) or
+                        * PTE is in IO space and can't be updated atomically */
+                        return TRANSLATE_FAIL;
+                    }
+                }
+
+                /* All checks pass, return the physical address */
+                target_ulong pa_start = ((cell_desc >> RT_PA_SHIFT) & RT_PA_MASK) << PGSHIFT;
+                *physical = (addr - va_start) + pa_start;
+
+                /* set permissions on the TLB entry */
+                if ((perms & RT_R) || ((perms & RT_X) && mxr)) {
+                    *prot |= PAGE_READ;
+                }
+                if ((perms & RT_X)) {
+                    *prot |= PAGE_EXEC;
+                }
+                /* add write permission on stores or if the page is already dirty,
+                so that we TLB miss on later writes to update the dirty bit */
+                if ((perms & RT_W) &&
+                        (access_type == MMU_DATA_STORE || (perms & RT_D))) {
+                    *prot |= PAGE_WRITE;
+                }
+                return TRANSLATE_SUCCESS;
+            }
+        }
+
+
+    } else {
+#endif
+        int ptshift = (levels - 1) * ptidxbits;
+        int i;
 
 #if !TCG_OVERSIZED_GUEST
 restart:
 #endif
-    for (i = 0; i < levels; i++, ptshift -= ptidxbits) {
-        target_ulong idx;
-        if (i == 0) {
-            idx = (addr >> (PGSHIFT + ptshift)) &
-                           ((1 << (ptidxbits + widened)) - 1);
-        } else {
-            idx = (addr >> (PGSHIFT + ptshift)) &
-                           ((1 << ptidxbits) - 1);
-        }
-
-        /* check that physical address of PTE is legal */
-        hwaddr pte_addr;
-
-        if (two_stage && first_stage) {
-            int vbase_prot;
-            hwaddr vbase;
-
-            /* Do the second stage translation on the base PTE address. */
-            int vbase_ret = get_physical_address(env, &vbase, &vbase_prot,
-                                                 base, NULL, MMU_DATA_LOAD,
-                                                 mmu_idx, false, true,
-                                                 is_debug);
-
-            if (vbase_ret != TRANSLATE_SUCCESS) {
-                if (fault_pte_addr) {
-                    *fault_pte_addr = (base + idx * ptesize) >> 2;
-                }
-                return TRANSLATE_G_STAGE_FAIL;
+        for (i = 0; i < levels; i++, ptshift -= ptidxbits) {
+            target_ulong idx;
+            if (i == 0) {
+                idx = (addr >> (PGSHIFT + ptshift)) &
+                            ((1 << (ptidxbits + widened)) - 1);
+            } else {
+                idx = (addr >> (PGSHIFT + ptshift)) &
+                            ((1 << ptidxbits) - 1);
             }
 
-            pte_addr = vbase + idx * ptesize;
-        } else {
-            pte_addr = base + idx * ptesize;
-        }
+            /* check that physical address of PTE is legal */
+            hwaddr pte_addr;
 
-        int pmp_prot;
-        int pmp_ret = get_physical_address_pmp(env, &pmp_prot, NULL, pte_addr,
-                                               sizeof(target_ulong),
-                                               MMU_DATA_LOAD, PRV_S);
-        if (pmp_ret != TRANSLATE_SUCCESS) {
-            return TRANSLATE_PMP_FAIL;
-        }
+            if (two_stage && first_stage) {
+                int vbase_prot;
+                hwaddr vbase;
 
-        target_ulong pte;
-        if (riscv_cpu_mxl(env) == MXL_RV32) {
-            pte = address_space_ldl(cs->as, pte_addr, attrs, &res);
-        } else {
-            pte = address_space_ldq(cs->as, pte_addr, attrs, &res);
-        }
+                /* Do the second stage translation on the base PTE address. */
+                int vbase_ret = get_physical_address(env, &vbase, &vbase_prot,
+                                                    base, NULL, MMU_DATA_LOAD,
+                                                    mmu_idx, false, true,
+                                                    is_debug);
 
-        if (res != MEMTX_OK) {
-            return TRANSLATE_FAIL;
-        }
-
-        hwaddr ppn = pte >> PTE_PPN_SHIFT;
-
-        if (!(pte & PTE_V)) {
-            /* Invalid PTE */
-            return TRANSLATE_FAIL;
-        } else if (!(pte & (PTE_R | PTE_W | PTE_X))) {
-            /* Inner PTE, continue walking */
-            base = ppn << PGSHIFT;
-        } else if ((pte & (PTE_R | PTE_W | PTE_X)) == PTE_W) {
-            /* Reserved leaf PTE flags: PTE_W */
-            return TRANSLATE_FAIL;
-        } else if ((pte & (PTE_R | PTE_W | PTE_X)) == (PTE_W | PTE_X)) {
-            /* Reserved leaf PTE flags: PTE_W + PTE_X */
-            return TRANSLATE_FAIL;
-        } else if ((pte & PTE_U) && ((mode != PRV_U) &&
-                   (!sum || access_type == MMU_INST_FETCH))) {
-            /* User PTE flags when not U mode and mstatus.SUM is not set,
-               or the access type is an instruction fetch */
-            return TRANSLATE_FAIL;
-        } else if (!(pte & PTE_U) && (mode != PRV_S)) {
-            /* Supervisor PTE flags when not S mode */
-            return TRANSLATE_FAIL;
-        } else if (ppn & ((1ULL << ptshift) - 1)) {
-            /* Misaligned PPN */
-            return TRANSLATE_FAIL;
-        } else if (access_type == MMU_DATA_LOAD && !((pte & PTE_R) ||
-                   ((pte & PTE_X) && mxr))) {
-            /* Read access check failed */
-            return TRANSLATE_FAIL;
-        } else if (access_type == MMU_DATA_STORE && !(pte & PTE_W)) {
-            /* Write access check failed */
-            return TRANSLATE_FAIL;
-        } else if (access_type == MMU_INST_FETCH && !(pte & PTE_X)) {
-            /* Fetch access check failed */
-            return TRANSLATE_FAIL;
-        } else {
-            /* if necessary, set accessed and dirty bits. */
-            target_ulong updated_pte = pte | PTE_A |
-                (access_type == MMU_DATA_STORE ? PTE_D : 0);
-
-            /* Page table updates need to be atomic with MTTCG enabled */
-            if (updated_pte != pte) {
-                /*
-                 * - if accessed or dirty bits need updating, and the PTE is
-                 *   in RAM, then we do so atomically with a compare and swap.
-                 * - if the PTE is in IO space or ROM, then it can't be updated
-                 *   and we return TRANSLATE_FAIL.
-                 * - if the PTE changed by the time we went to update it, then
-                 *   it is no longer valid and we must re-walk the page table.
-                 */
-                MemoryRegion *mr;
-                hwaddr l = sizeof(target_ulong), addr1;
-                mr = address_space_translate(cs->as, pte_addr,
-                    &addr1, &l, false, MEMTXATTRS_UNSPECIFIED);
-                if (memory_region_is_ram(mr)) {
-                    target_ulong *pte_pa =
-                        qemu_map_ram_ptr(mr->ram_block, addr1);
-#if TCG_OVERSIZED_GUEST
-                    /* MTTCG is not enabled on oversized TCG guests so
-                     * page table updates do not need to be atomic */
-                    *pte_pa = pte = updated_pte;
-#else
-                    target_ulong old_pte =
-                        qatomic_cmpxchg(pte_pa, pte, updated_pte);
-                    if (old_pte != pte) {
-                        goto restart;
-                    } else {
-                        pte = updated_pte;
+                if (vbase_ret != TRANSLATE_SUCCESS) {
+                    if (fault_pte_addr) {
+                        *fault_pte_addr = (base + idx * ptesize) >> 2;
                     }
-#endif
-                } else {
-                    /* misconfigured PTE in ROM (AD bits are not preset) or
-                     * PTE is in IO space and can't be updated atomically */
-                    return TRANSLATE_FAIL;
+                    return TRANSLATE_G_STAGE_FAIL;
                 }
+
+                pte_addr = vbase + idx * ptesize;
+            } else {
+                pte_addr = base + idx * ptesize;
             }
 
-            /* for superpage mappings, make a fake leaf PTE for the TLB's
-               benefit. */
-            target_ulong vpn = addr >> PGSHIFT;
-            *physical = ((ppn | (vpn & ((1L << ptshift) - 1))) << PGSHIFT) |
-                        (addr & ~TARGET_PAGE_MASK);
+            int pmp_prot;
+            int pmp_ret = get_physical_address_pmp(env, &pmp_prot, NULL, pte_addr,
+                                                sizeof(target_ulong),
+                                                MMU_DATA_LOAD, PRV_S);
+            if (pmp_ret != TRANSLATE_SUCCESS) {
+                return TRANSLATE_PMP_FAIL;
+            }
 
-            /* set permissions on the TLB entry */
-            if ((pte & PTE_R) || ((pte & PTE_X) && mxr)) {
-                *prot |= PAGE_READ;
+            target_ulong pte;
+            if (riscv_cpu_mxl(env) == MXL_RV32) {
+                pte = address_space_ldl(cs->as, pte_addr, attrs, &res);
+            } else {
+                pte = address_space_ldq(cs->as, pte_addr, attrs, &res);
             }
-            if ((pte & PTE_X)) {
-                *prot |= PAGE_EXEC;
+
+            if (res != MEMTX_OK) {
+                return TRANSLATE_FAIL;
             }
-            /* add write permission on stores or if the page is already dirty,
-               so that we TLB miss on later writes to update the dirty bit */
-            if ((pte & PTE_W) &&
-                    (access_type == MMU_DATA_STORE || (pte & PTE_D))) {
-                *prot |= PAGE_WRITE;
+
+            hwaddr ppn = pte >> PTE_PPN_SHIFT;
+
+            if (!(pte & PTE_V)) {
+                /* Invalid PTE */
+                return TRANSLATE_FAIL;
+            } else if (!(pte & (PTE_R | PTE_W | PTE_X))) {
+                /* Inner PTE, continue walking */
+                base = ppn << PGSHIFT;
+            } else if ((pte & (PTE_R | PTE_W | PTE_X)) == PTE_W) {
+                /* Reserved leaf PTE flags: PTE_W */
+                return TRANSLATE_FAIL;
+            } else if ((pte & (PTE_R | PTE_W | PTE_X)) == (PTE_W | PTE_X)) {
+                /* Reserved leaf PTE flags: PTE_W + PTE_X */
+                return TRANSLATE_FAIL;
+            } else if ((pte & PTE_U) && ((mode != PRV_U) &&
+                    (!sum || access_type == MMU_INST_FETCH))) {
+                /* User PTE flags when not U mode and mstatus.SUM is not set,
+                or the access type is an instruction fetch */
+                return TRANSLATE_FAIL;
+            } else if (!(pte & PTE_U) && (mode != PRV_S)) {
+                /* Supervisor PTE flags when not S mode */
+                return TRANSLATE_FAIL;
+            } else if (ppn & ((1ULL << ptshift) - 1)) {
+                /* Misaligned PPN */
+                return TRANSLATE_FAIL;
+            } else if (access_type == MMU_DATA_LOAD && !((pte & PTE_R) ||
+                    ((pte & PTE_X) && mxr))) {
+                /* Read access check failed */
+                return TRANSLATE_FAIL;
+            } else if (access_type == MMU_DATA_STORE && !(pte & PTE_W)) {
+                /* Write access check failed */
+                return TRANSLATE_FAIL;
+            } else if (access_type == MMU_INST_FETCH && !(pte & PTE_X)) {
+                /* Fetch access check failed */
+                return TRANSLATE_FAIL;
+            } else {
+                /* if necessary, set accessed and dirty bits. */
+                target_ulong updated_pte = pte | PTE_A |
+                    (access_type == MMU_DATA_STORE ? PTE_D : 0);
+
+                /* Page table updates need to be atomic with MTTCG enabled */
+                if (updated_pte != pte) {
+                    /*
+                    * - if accessed or dirty bits need updating, and the PTE is
+                    *   in RAM, then we do so atomically with a compare and swap.
+                    * - if the PTE is in IO space or ROM, then it can't be updated
+                    *   and we return TRANSLATE_FAIL.
+                    * - if the PTE changed by the time we went to update it, then
+                    *   it is no longer valid and we must re-walk the page table.
+                    */
+                    MemoryRegion *mr;
+                    hwaddr l = sizeof(target_ulong), addr1;
+                    mr = address_space_translate(cs->as, pte_addr,
+                        &addr1, &l, false, MEMTXATTRS_UNSPECIFIED);
+                    if (memory_region_is_ram(mr)) {
+                        target_ulong *pte_pa =
+                            qemu_map_ram_ptr(mr->ram_block, addr1);
+#if TCG_OVERSIZED_GUEST
+                        /* MTTCG is not enabled on oversized TCG guests so
+                        * page table updates do not need to be atomic */
+                        *pte_pa = pte = updated_pte;
+#else
+                        target_ulong old_pte =
+                            qatomic_cmpxchg(pte_pa, pte, updated_pte);
+                        if (old_pte != pte) {
+                            goto restart;
+                        } else {
+                            pte = updated_pte;
+                        }
+#endif
+                    } else {
+                        /* misconfigured PTE in ROM (AD bits are not preset) or
+                        * PTE is in IO space and can't be updated atomically */
+                        return TRANSLATE_FAIL;
+                    }
+                }
+
+                /* for superpage mappings, make a fake leaf PTE for the TLB's
+                benefit. */
+                target_ulong vpn = addr >> PGSHIFT;
+                *physical = ((ppn | (vpn & ((1L << ptshift) - 1))) << PGSHIFT) |
+                            (addr & ~TARGET_PAGE_MASK);
+
+                /* set permissions on the TLB entry */
+                if ((pte & PTE_R) || ((pte & PTE_X) && mxr)) {
+                    *prot |= PAGE_READ;
+                }
+                if ((pte & PTE_X)) {
+                    *prot |= PAGE_EXEC;
+                }
+                /* add write permission on stores or if the page is already dirty,
+                so that we TLB miss on later writes to update the dirty bit */
+                if ((pte & PTE_W) &&
+                        (access_type == MMU_DATA_STORE || (pte & PTE_D))) {
+                    *prot |= PAGE_WRITE;
+                }
+                return TRANSLATE_SUCCESS;
             }
-            return TRANSLATE_SUCCESS;
         }
+#ifdef TARGET_RISCV64 /* Closing out if(vm == VM_SECCELL) else {} */
     }
+#endif
     return TRANSLATE_FAIL;
 }
 
