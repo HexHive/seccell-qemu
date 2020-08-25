@@ -127,8 +127,12 @@ target_ulong helper_sret(CPURISCVState *env, target_ulong cpu_pc_deb)
         env->mstatus = mstatus;
     }
 
+    /* sret shouldn't return to asid 0 */
+    if(env->urid == 0)
+        riscv_raise_exception(env, RISCV_EXCP_INST_PAGE_FAULT, retpc);
     env->usid = env->urid;
     env->urid = 0;
+
     riscv_cpu_set_mode(env, prev_priv);
 
     return retpc;
