@@ -1056,7 +1056,7 @@ static RISCVException read_usid(CPURISCVState *env, int csrno, target_ulong *val
         *val = 0;
         return RISCV_EXCP_NONE;
     }
-    *val = env->satp;
+    *val = env->usid;
 
     return RISCV_EXCP_NONE;
 }
@@ -1067,7 +1067,7 @@ static RISCVException read_urid(CPURISCVState *env, int csrno, target_ulong *val
         *val = 0;
         return RISCV_EXCP_NONE;
     }
-    *val = env->satp;
+    *val = env->urid;
 
     return RISCV_EXCP_NONE;
 }
