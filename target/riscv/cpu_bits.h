@@ -461,6 +461,7 @@ typedef enum {
 #define CELL_DESC_SZ  16
 #define CELL_PERM_SZ  8
 #define INVALID_CELL  -1ull
+#define RT_V          0x0000000000000001ull // Valid
 #define RT_R          0x0000000000000002ull // Read
 #define RT_W          0x0000000000000004ull // Write
 #define RT_X          0x0000000000000008ull // Execute

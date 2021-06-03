@@ -594,8 +594,8 @@ typedef unsigned __int128 uint128_t;
 
             uint8_t perms = (uint8_t) address_space_ldq(cs->as, perm_addr, attrs, &res);
 
-            if (!(perms & (RT_R | RT_W | RT_X)))
-                /* No permissions, try a different cell */
+            if (!(perms & (RT_R | RT_W | RT_X)) || !(perms & RT_V))
+                /* No permissions or valid bit not set, try a different cell */
                 continue;
             else if ((perms & (RT_R | RT_W | RT_X)) == RT_W)
                 /* riscv: Write without read not allowed */
