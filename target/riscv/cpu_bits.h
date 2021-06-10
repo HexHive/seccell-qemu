@@ -459,7 +459,7 @@ typedef enum {
 
 //Atri: For the range table
 #define CELL_DESC_SZ  16
-#define CELL_PERM_SZ  8
+#define CELL_PERM_SZ  1
 #define INVALID_CELL  -1ull
 #define RT_V          0x0000000000000001ull // Valid
 #define RT_R          0x0000000000000002ull // Read

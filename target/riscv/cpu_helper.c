@@ -532,7 +532,7 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
 
 #ifdef TARGET_RISCV64
 /* Simplifying assumptions */
-#if CELL_PERM_SZ != 8
+#if CELL_PERM_SZ != 1
 # error "get_physical_address() currently assumes cell permissions is 1byte only"
 #endif
 
@@ -567,8 +567,7 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
         unsigned R = (cell_count * CELL_DESC_SZ / 64) + 1;
         while(S < R)
             S <<= 1;
-        unsigned T = (S > CELL_DESC_SZ / CELL_PERM_SZ)?
-                      S * 64 * CELL_PERM_SZ / CELL_DESC_SZ: 64;
+        unsigned T = MAX(64 / CELL_DESC_SZ * S, 64);
 
         target_ulong usid = env->usid;
         for(unsigned n = 0; n < cell_count; n++) {
