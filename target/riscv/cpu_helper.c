@@ -516,7 +516,8 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
     }
 
     CPUState *cs = env_cpu(env);
-    int va_bits = (vm == VM_SECCELL)? RT_VFN_SIZE + PGSHIFT + widened: PGSHIFT + levels * ptidxbits + widened;
+    int va_bits = (vm == VM_SECCELL) ? RT_VFN_SIZE + PGSHIFT + widened
+                                     : PGSHIFT + levels * ptidxbits + widened;
     target_ulong mask, masked_msbs;
 
     if (TARGET_LONG_BITS > (va_bits - 1)) {
@@ -533,65 +534,72 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
 #ifdef TARGET_RISCV64
 /* Simplifying assumptions */
 #if CELL_PERM_SZ != 1
-# error "get_physical_address() currently assumes cell permissions is 1byte only"
+#error "get_physical_address() currently assumes cell permissions is 1byte only"
 #endif
 
     if(vm == VM_SECCELL) {
         /* Remove sign-extended bits from addr */
         addr &= (1ULL << va_bits) - 1;
 
-        unsigned cell_count = 0;
-        while(1) {
-            hwaddr access_paddr = base + cell_count * CELL_DESC_SZ;
+#ifdef __SIZEOF_INT128__
+        typedef unsigned __int128 uint128_t;
+#endif
+        /* Retrieve values from metacell */
+        uint128_t metacell = address_space_ldq(cs->as, base + TARGET_LONG_SIZE, attrs, &res);
+        if (res != MEMTX_OK) {
+            return TRANSLATE_FAIL;
+        }
+        metacell <<= TARGET_LONG_BITS;
+        metacell |= address_space_ldq(cs->as, base, attrs, &res);
+        if (res != MEMTX_OK) {
+            return TRANSLATE_FAIL;
+        }
+
+        /* N = number of cells */
+        target_ulong N = (metacell >> RT_META_N_SHIFT) & RT_META_N_MASK;
+        /* M = number of secdivs (currently not used in address translation) */
+        ATTRIBUTE_UNUSED target_ulong M = (metacell >> RT_META_M_SHIFT) & RT_META_M_MASK;
+        /* T = number of 64 byte lines for secdiv perms */
+        target_ulong T = (metacell >> RT_META_T_SHIFT) & RT_META_T_MASK;
+        /* S = number of 64 byte lines available for cells */
+        target_ulong S = CELL_DESC_SZ * T;
+
+        target_ulong usid = env->usid;
+        for(unsigned int n = 1; n < N; n++) {
+            hwaddr desc_addr = base + n * CELL_DESC_SZ;
+            hwaddr perm_addr = base + (S * 64) + (usid * T * 64) + n;
 
             int pmp_prot;
-            int pmp_ret = get_physical_address_pmp(env, &pmp_prot, NULL, access_paddr,
-                                                sizeof(target_ulong),
-                                                MMU_DATA_LOAD, PRV_S);
+            int pmp_ret = get_physical_address_pmp(env, &pmp_prot, NULL, desc_addr,
+                                                   sizeof(target_ulong),
+                                                   MMU_DATA_LOAD, PRV_S);
             if (pmp_ret != TRANSLATE_SUCCESS) {
                 return TRANSLATE_PMP_FAIL;
             }
 
-            target_ulong word0 = address_space_ldq(cs->as, access_paddr, attrs, &res);
-            if (res != MEMTX_OK)
+            uint128_t cell_desc = address_space_ldq(cs->as,
+                                                    desc_addr + TARGET_LONG_SIZE,
+                                                    attrs, &res);
+            if (res != MEMTX_OK) {
                 return TRANSLATE_FAIL;
-            target_ulong word1 = address_space_ldq(cs->as, access_paddr + TARGET_LONG_SIZE, attrs, &res);
-            if (res != MEMTX_OK)
-                return TRANSLATE_FAIL;
-
-            if((word0 == INVALID_CELL) && (word1 == INVALID_CELL))
-                break;
-            cell_count++;
-        }
-        unsigned S = 1;
-        unsigned R = (cell_count * CELL_DESC_SZ / 64) + 1;
-        while(S < R)
-            S <<= 1;
-        unsigned T = MAX(64 / CELL_DESC_SZ * S, 64);
-
-        target_ulong usid = env->usid;
-        for(unsigned n = 0; n < cell_count; n++) {
-            hwaddr desc_addr = base + n * CELL_DESC_SZ;
-            hwaddr perm_addr = base + (S * 64) + (usid * T) + n;
-
-#ifdef __SIZEOF_INT128__
-typedef unsigned __int128 uint128_t;
-#endif
-            uint128_t cell_desc = address_space_ldq(cs->as, desc_addr + TARGET_LONG_SIZE, attrs, &res);
-            if (res != MEMTX_OK)
-                return TRANSLATE_FAIL;
+            }
             cell_desc <<= TARGET_LONG_BITS;
             cell_desc |= address_space_ldq(cs->as, desc_addr, attrs, &res);
-            if (res != MEMTX_OK)
+            if (res != MEMTX_OK) {
                 return TRANSLATE_FAIL;
+            }
 
-            target_ulong va_start = ((cell_desc >> RT_VA_START_SHIFT) & RT_VA_MASK) << PGSHIFT;
-            target_ulong va_end = ((cell_desc >> RT_VA_END_SHIFT) & RT_VA_MASK) << PGSHIFT;
+            target_ulong va_start = ((cell_desc >> RT_VA_START_SHIFT)
+                                        & RT_VA_MASK) << PGSHIFT;
+            target_ulong va_end = ((cell_desc >> RT_VA_END_SHIFT)
+                                        & RT_VA_MASK) << PGSHIFT;
             target_ulong addr_vpn = (addr >> PGSHIFT) << PGSHIFT;
-            if((addr_vpn > va_end) || (addr_vpn < va_start))
+            if((addr_vpn > va_end) || (addr_vpn < va_start)) {
                 continue;
+            }
 
-            uint8_t perms = (uint8_t) address_space_ldq(cs->as, perm_addr, attrs, &res);
+            uint8_t perms = (uint8_t) address_space_ldq(cs->as, perm_addr,
+                                                        attrs, &res);
 
             if (!(perms & (RT_R | RT_W | RT_X)) || !(perms & RT_V))
                 /* No permissions or valid bit not set, try a different cell */
@@ -638,7 +646,8 @@ typedef unsigned __int128 uint128_t;
                 }
 
                 /* All checks pass, return the physical address */
-                target_ulong pa_start = ((cell_desc >> RT_PA_SHIFT) & RT_PA_MASK) << PGSHIFT;
+                target_ulong pa_start = ((cell_desc >> RT_PA_SHIFT)
+                                            & RT_PA_MASK) << PGSHIFT;
                 *physical = (addr - va_start) + pa_start;
 
                 /* set permissions on the TLB entry */
