@@ -537,7 +537,7 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
 #error "get_physical_address() currently assumes cell permissions is 1byte only"
 #endif
 
-    if(vm == VM_SECCELL) {
+    if (vm == VM_SECCELL) {
         /* Remove sign-extended bits from addr */
         addr &= (1ULL << va_bits) - 1;
 
@@ -565,7 +565,7 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
         target_ulong S = CELL_DESC_SZ * T;
 
         target_ulong usid = env->usid;
-        for(unsigned int n = 1; n < N; n++) {
+        for (unsigned int n = 1; n < N; n++) {
             hwaddr desc_addr = base + n * CELL_DESC_SZ;
             hwaddr perm_addr = base + (S * 64) + (usid * T * 64) + n;
 
@@ -589,12 +589,17 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
                 return TRANSLATE_FAIL;
             }
 
+            uint8_t del_flag = (cell_desc >> RT_DEL_SHIFT) & RT_DEL_MASK;
+            uint8_t val_flag = (cell_desc >> RT_VAL_SHIFT) & RT_VAL_MASK;
             target_ulong va_start = ((cell_desc >> RT_VA_START_SHIFT)
                                         & RT_VA_MASK) << PGSHIFT;
             target_ulong va_end = ((cell_desc >> RT_VA_END_SHIFT)
                                         & RT_VA_MASK) << PGSHIFT;
             target_ulong addr_vpn = (addr >> PGSHIFT) << PGSHIFT;
-            if((addr_vpn > va_end) || (addr_vpn < va_start)) {
+            if ((0 != del_flag) || (0 == val_flag) ||
+                (addr_vpn > va_end) || (addr_vpn < va_start))
+            {
+                /* Cell marked as deleted or invalid or doesn't cover address */
                 continue;
             }
 
