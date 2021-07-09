@@ -370,6 +370,10 @@ void riscv_cpu_do_transaction_failed(CPUState *cs, hwaddr physaddr,
                                      MMUAccessType access_type,
                                      int mmu_idx, MemTxAttrs attrs,
                                      MemTxResult response, uintptr_t retaddr);
+int riscv_cpu_get_physical_address_pmp(CPURISCVState *env, int *prot,
+                                       target_ulong *tlb_size, hwaddr addr,
+                                       int size, MMUAccessType access_type,
+                                       int mode);
 char *riscv_isa_string(RISCVCPU *cpu);
 void riscv_cpu_list(void);
 

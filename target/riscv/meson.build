@@ -27,6 +27,9 @@ riscv_softmmu_ss.add(files(
   'monitor.c',
   'machine.c'
 ))
+riscv_softmmu_ss.add(when: 'TARGET_RISCV64', if_true: files(
+  'seccells.c'
+))
 
 target_arch += {'riscv': riscv_ss}
 target_softmmu_arch += {'riscv': riscv_softmmu_ss}

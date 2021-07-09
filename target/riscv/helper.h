@@ -73,6 +73,11 @@ DEF_HELPER_1(wfi, void, env)
 DEF_HELPER_1(tlb_flush, void, env)
 #endif
 
+/* SecCells */
+DEF_HELPER_3(count, tl, env, tl, tl)
+DEF_HELPER_2(inval, void, env, tl)
+DEF_HELPER_2(reval, void, env, tl)
+
 /* Hypervisor functions */
 #ifndef CONFIG_USER_ONLY
 DEF_HELPER_1(hyp_tlb_flush, void, env)

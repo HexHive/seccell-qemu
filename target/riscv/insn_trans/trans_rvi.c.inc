@@ -575,3 +575,30 @@ static bool trans_csrrci(DisasContext *ctx, arg_csrrci *a)
     TCGv mask = tcg_constant_tl(a->rs1);
     return do_csrrw(ctx, a->rd, a->csr, ctx->zero, mask);
 }
+
+/* SecCells translations */
+static bool trans_count(DisasContext *ctx, arg_count *a)
+{
+    TCGv dest = tcg_temp_new();
+
+    gen_helper_count(dest, cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                     get_gpr(ctx, a->rs2, EXT_NONE));
+
+    gen_set_gpr(ctx, a->rd, dest);
+    tcg_temp_free(dest);
+    return true;
+}
+
+static bool trans_inval(DisasContext *ctx, arg_inval *a)
+{
+    gen_helper_inval(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE));
+
+    return true;
+}
+
+static bool trans_reval(DisasContext *ctx, arg_reval *a)
+{
+    gen_helper_reval(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE));
+
+    return true;
+}

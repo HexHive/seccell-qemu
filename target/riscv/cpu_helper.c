@@ -343,7 +343,8 @@ void riscv_cpu_set_mode(CPURISCVState *env, target_ulong newpriv)
 }
 
 /*
- * get_physical_address_pmp - check PMP permission for this physical address
+ * riscv_cpu_get_physical_address_pmp - check PMP permission for this physical
+ * address
  *
  * Match the PMP region and check permission for this physical address and it's
  * TLB page. Returns 0 if the permission checking was successful
@@ -356,10 +357,10 @@ void riscv_cpu_set_mode(CPURISCVState *env, target_ulong newpriv)
  * @access_type: The type of MMU access
  * @mode: Indicates current privilege level.
  */
-static int get_physical_address_pmp(CPURISCVState *env, int *prot,
-                                    target_ulong *tlb_size, hwaddr addr,
-                                    int size, MMUAccessType access_type,
-                                    int mode)
+int riscv_cpu_get_physical_address_pmp(CPURISCVState *env, int *prot,
+                                       target_ulong *tlb_size, hwaddr addr,
+                                       int size, MMUAccessType access_type,
+                                       int mode)
 {
     pmp_priv_t pmp_priv;
     target_ulong tlb_size_pmp = 0;
@@ -570,9 +571,11 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
             hwaddr perm_addr = base + (S * 64) + (usid * T * 64) + n;
 
             int pmp_prot;
-            int pmp_ret = get_physical_address_pmp(env, &pmp_prot, NULL, desc_addr,
-                                                   sizeof(target_ulong),
-                                                   MMU_DATA_LOAD, PRV_S);
+            int pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot,
+                                                             NULL, desc_addr,
+                                                             sizeof(uint128_t),
+                                                             MMU_DATA_LOAD,
+                                                             PRV_S);
             if (pmp_ret != TRANSLATE_SUCCESS) {
                 return TRANSLATE_PMP_FAIL;
             }
@@ -717,9 +720,10 @@ restart:
             }
 
             int pmp_prot;
-            int pmp_ret = get_physical_address_pmp(env, &pmp_prot, NULL, pte_addr,
-                                                sizeof(target_ulong),
-                                                MMU_DATA_LOAD, PRV_S);
+            int pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot,
+                                                        NULL, pte_addr,
+                                                        sizeof(target_ulong),
+                                                        MMU_DATA_LOAD, PRV_S);
             if (pmp_ret != TRANSLATE_SUCCESS) {
                 return TRANSLATE_PMP_FAIL;
             }
@@ -1038,8 +1042,10 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
             prot &= prot2;
 
             if (ret == TRANSLATE_SUCCESS) {
-                ret = get_physical_address_pmp(env, &prot_pmp, &tlb_size, pa,
-                                               size, access_type, mode);
+                ret = riscv_cpu_get_physical_address_pmp(env, &prot_pmp,
+                                                         &tlb_size, pa,
+                                                         size, access_type,
+                                                         mode);
 
                 qemu_log_mask(CPU_LOG_MMU,
                               "%s PMP address=" TARGET_FMT_plx " ret %d prot"
@@ -1071,8 +1077,9 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                       __func__, address, ret, pa, prot);
 
         if (ret == TRANSLATE_SUCCESS) {
-            ret = get_physical_address_pmp(env, &prot_pmp, &tlb_size, pa,
-                                           size, access_type, mode);
+            ret = riscv_cpu_get_physical_address_pmp(env, &prot_pmp, &tlb_size,
+                                                     pa, size, access_type,
+                                                     mode);
 
             qemu_log_mask(CPU_LOG_MMU,
                           "%s PMP address=" TARGET_FMT_plx " ret %d prot"

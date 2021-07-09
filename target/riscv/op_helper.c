@@ -19,6 +19,7 @@
 
 #include "qemu/osdep.h"
 #include "cpu.h"
+#include "seccells.h"
 #include "qemu/main-loop.h"
 #include "exec/exec-all.h"
 #include "exec/helper-proto.h"
@@ -67,6 +68,36 @@ target_ulong helper_csrrw(CPURISCVState *env, int csr,
         riscv_raise_exception(env, ret, GETPC());
     }
     return val;
+}
+
+target_ulong helper_count(CPURISCVState *env, target_ulong addr,
+        target_ulong perms)
+{
+    target_ulong val = 0;
+    int ret = riscv_count(env, &val, addr, perms);
+
+    if (ret < 0) {
+        riscv_raise_exception(env, -ret, GETPC());
+    }
+    return val;
+}
+
+void helper_inval(CPURISCVState *env, target_ulong addr)
+{
+    int ret = riscv_inval(env, addr);
+
+    if (ret < 0) {
+        riscv_raise_exception(env, -ret, GETPC());
+    }
+}
+
+void helper_reval(CPURISCVState *env, target_ulong addr)
+{
+    int ret = riscv_reval(env, addr, 0);
+
+    if (ret < 0) {
+        riscv_raise_exception(env, -ret, GETPC());
+    }
 }
 
 #ifndef CONFIG_USER_ONLY
