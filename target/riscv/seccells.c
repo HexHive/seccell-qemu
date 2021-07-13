@@ -388,7 +388,7 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
     }
 
     /* Clear and write back permissions */
-    perms &= ~(RT_R | RT_W | RT_X);
+    perms &= ~(RT_V | RT_R | RT_W | RT_X);
 
     pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
                                                  perms_addr, sizeof(uint8_t),
@@ -492,7 +492,7 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     uint8_t old_perms = (uint8_t) address_space_ldub(cs->as, perms_addr,
                                                      attrs, &res);
 
-    perms = (perms & (RT_R | RT_W | RT_X)) | old_perms;
+    perms = (perms & (RT_V | RT_R | RT_W | RT_X)) | old_perms;
 
     pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
                                                  perms_addr, sizeof(uint8_t),

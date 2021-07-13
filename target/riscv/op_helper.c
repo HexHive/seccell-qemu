@@ -91,9 +91,9 @@ void helper_inval(CPURISCVState *env, target_ulong addr)
     }
 }
 
-void helper_reval(CPURISCVState *env, target_ulong addr)
+void helper_reval(CPURISCVState *env, target_ulong addr, target_ulong perms)
 {
-    int ret = riscv_reval(env, addr, 0);
+    int ret = riscv_reval(env, addr, perms);
 
     if (ret < 0) {
         riscv_raise_exception(env, -ret, GETPC());

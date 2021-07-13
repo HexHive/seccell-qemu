@@ -76,7 +76,7 @@ DEF_HELPER_1(tlb_flush, void, env)
 /* SecCells */
 DEF_HELPER_3(count, tl, env, tl, tl)
 DEF_HELPER_2(inval, void, env, tl)
-DEF_HELPER_2(reval, void, env, tl)
+DEF_HELPER_3(reval, void, env, tl, tl)
 
 /* Hypervisor functions */
 #ifndef CONFIG_USER_ONLY

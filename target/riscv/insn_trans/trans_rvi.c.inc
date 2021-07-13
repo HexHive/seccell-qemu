@@ -598,7 +598,8 @@ static bool trans_inval(DisasContext *ctx, arg_inval *a)
 
 static bool trans_reval(DisasContext *ctx, arg_reval *a)
 {
-    gen_helper_reval(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE));
+    gen_helper_reval(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                     get_gpr(ctx, a->rs2, EXT_NONE));
 
     return true;
 }
