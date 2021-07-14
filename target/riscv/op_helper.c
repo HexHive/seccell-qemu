@@ -70,6 +70,25 @@ target_ulong helper_csrrw(CPURISCVState *env, int csr,
     return val;
 }
 
+void helper_grant(CPURISCVState *env, target_ulong addr, target_ulong target,
+        target_ulong perms)
+{
+    int ret = riscv_grant(env, addr, target, perms);
+
+    if (ret < 0) {
+        riscv_raise_exception(env, -ret, GETPC());
+    }
+}
+
+void helper_prot(CPURISCVState *env, target_ulong addr, target_ulong perms)
+{
+    int ret = riscv_protect(env, addr, perms);
+
+    if (ret < 0) {
+        riscv_raise_exception(env, -ret, GETPC());
+    }
+}
+
 target_ulong helper_count(CPURISCVState *env, target_ulong addr,
         target_ulong perms)
 {

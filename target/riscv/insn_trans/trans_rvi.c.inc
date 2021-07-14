@@ -577,6 +577,27 @@ static bool trans_csrrci(DisasContext *ctx, arg_csrrci *a)
 }
 
 /* SecCells translations */
+
+static bool trans_grant(DisasContext *ctx, arg_grant *a)
+{
+    TCGv perms = tcg_temp_new();
+    tcg_gen_movi_tl(perms, a->imm);
+
+    gen_helper_grant(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                     get_gpr(ctx, a->rs2, EXT_NONE), perms);
+
+    tcg_temp_free(perms);
+    return true;
+}
+
+static bool trans_prot(DisasContext *ctx, arg_prot *a)
+{
+    gen_helper_prot(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                    get_gpr(ctx, a->rs2, EXT_NONE));
+
+    return true;
+}
+
 static bool trans_count(DisasContext *ctx, arg_count *a)
 {
     TCGv dest = tcg_temp_new();
