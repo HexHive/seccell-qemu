@@ -315,6 +315,7 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
         return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
     }
 
+    tlb_flush(cs);
     return 0;
 }
 
@@ -394,6 +395,7 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
         return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
     }
 
+    tlb_flush(cs);
     return 0;
 }
 
@@ -588,6 +590,7 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
         return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
     }
 
+    tlb_flush(cs);
     return 0;
 }
 
@@ -678,7 +681,7 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     uint8_t old_perms = (uint8_t) address_space_ldub(cs->as, perms_addr,
                                                      attrs, &res);
 
-    perms = (perms & (RT_V | RT_R | RT_W | RT_X)) | old_perms;
+    perms = (perms & (RT_R | RT_W | RT_X)) | old_perms | RT_V;
 
     pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
                                                  perms_addr, sizeof(uint8_t),
@@ -692,5 +695,6 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
         return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
     }
 
+    tlb_flush(cs);
     return 0;
 }
