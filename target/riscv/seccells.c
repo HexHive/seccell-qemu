@@ -524,30 +524,21 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
     target_ulong usid = env->usid;
     hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
     for (unsigned int i = 1; i < meta.M; i++) {
-        hwaddr current_addr = rt_base + (meta.S * 64) + (meta.T * 64 * i)
-                              + cell.idx;
+        perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * i) + cell.idx;
 
-        pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot,
-                                                     NULL, current_addr,
-                                                     sizeof(uint8_t),
-                                                     MMU_DATA_LOAD, PRV_S);
+        pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
+                                                    perms_addr, sizeof(uint8_t),
+                                                    MMU_DATA_LOAD, PRV_S);
         if (pmp_ret != TRANSLATE_SUCCESS) {
             return -RISCV_EXCP_LOAD_ACCESS_FAULT;
         }
 
-        uint8_t current_perms = (uint8_t) address_space_ldub(cs->as,
-                                                             current_addr,
-                                                             attrs, &res);
+        perms = (uint8_t) address_space_ldub(cs->as, perms_addr, attrs, &res);
         if (res != MEMTX_OK) {
             return -RISCV_EXCP_LOAD_ACCESS_FAULT;
         }
 
-        if (i == usid) {
-            /* Want to skip current SecDiv but first retrieve permissions */
-            perms_addr = current_addr;
-            perms = current_perms;
-            continue;
-        } else if ((current_perms & (RT_R | RT_W | RT_X)) != 0) {
+        if ((i != usid) && (perms & (RT_V | RT_R | RT_W | RT_X)) != 0) {
             /* Some other SecDiv still has access => error out */
             return -RISCV_EXCP_ILLEGAL_INST;
         }
@@ -575,19 +566,35 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
         return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
     }
 
-    /* Clear and write back permissions */
-    perms &= ~(RT_V | RT_R | RT_W | RT_X);
+    /* Clear and write back permissions for all SecDivs */
+    for (unsigned int i = 0; i < meta.M; i++) {
+        perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * i) + cell.idx;
 
-    pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
-                                                 perms_addr, sizeof(uint8_t),
-                                                 MMU_DATA_STORE, PRV_S);
-    if (pmp_ret != TRANSLATE_SUCCESS) {
-        return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
-    }
+        pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
+                                                    perms_addr, sizeof(uint8_t),
+                                                    MMU_DATA_LOAD, PRV_S);
+        if (pmp_ret != TRANSLATE_SUCCESS) {
+            return -RISCV_EXCP_LOAD_ACCESS_FAULT;
+        }
 
-    address_space_stb(cs->as, perms_addr, perms, attrs, &res);
-    if (res != MEMTX_OK) {
-        return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+        perms = (uint8_t) address_space_ldub(cs->as, perms_addr, attrs, &res);
+        if (res != MEMTX_OK) {
+            return -RISCV_EXCP_LOAD_ACCESS_FAULT;
+        }
+
+        perms &= ~(RT_V | RT_R | RT_W | RT_X);
+
+        pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
+                                                    perms_addr, sizeof(uint8_t),
+                                                    MMU_DATA_STORE, PRV_S);
+        if (pmp_ret != TRANSLATE_SUCCESS) {
+            return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+        }
+
+        address_space_stb(cs->as, perms_addr, perms, attrs, &res);
+        if (res != MEMTX_OK) {
+            return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+        }
     }
 
     tlb_flush(cs);
@@ -668,31 +675,41 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
 
     target_ulong usid = env->usid;
     hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
-    hwaddr perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * usid)
-                        + cell.idx;
-    pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot,
-                                                 NULL, perms_addr,
-                                                 sizeof(uint8_t),
-                                                 MMU_DATA_LOAD, PRV_S);
-    if (pmp_ret != TRANSLATE_SUCCESS) {
-        return -RISCV_EXCP_LOAD_ACCESS_FAULT;
-    }
 
-    uint8_t old_perms = (uint8_t) address_space_ldub(cs->as, perms_addr,
-                                                     attrs, &res);
+    for (unsigned int i = 0; i < meta.M; i++) {
+        hwaddr perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * i)
+                            + cell.idx;
+        pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot,
+                                                     NULL, perms_addr,
+                                                     sizeof(uint8_t),
+                                                     MMU_DATA_LOAD, PRV_S);
+        if (pmp_ret != TRANSLATE_SUCCESS) {
+            return -RISCV_EXCP_LOAD_ACCESS_FAULT;
+        }
 
-    perms = (perms & (RT_R | RT_W | RT_X)) | old_perms | RT_V;
+        uint8_t old_perms = (uint8_t) address_space_ldub(cs->as, perms_addr,
+                                                         attrs, &res);
 
-    pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
-                                                 perms_addr, sizeof(uint8_t),
-                                                 MMU_DATA_STORE, PRV_S);
-    if (pmp_ret != TRANSLATE_SUCCESS) {
-        return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
-    }
+        uint8_t new_perms = 0;
+        if (i == usid) {
+            /* For the requesting SecDiv: set perms to the requested perms */
+            new_perms = old_perms | RT_V | (perms & (RT_R | RT_W | RT_X));
+        } else {
+            /* For all other SecDivs: just set the valid bit again */
+            new_perms = old_perms | RT_V;
+        }
 
-    address_space_stb(cs->as, perms_addr, perms, attrs, &res);
-    if (res != MEMTX_OK) {
-        return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+        pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
+                                                     perms_addr, sizeof(uint8_t),
+                                                     MMU_DATA_STORE, PRV_S);
+        if (pmp_ret != TRANSLATE_SUCCESS) {
+            return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+        }
+
+        address_space_stb(cs->as, perms_addr, new_perms, attrs, &res);
+        if (res != MEMTX_OK) {
+            return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+        }
     }
 
     tlb_flush(cs);
