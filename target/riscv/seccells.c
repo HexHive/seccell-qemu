@@ -42,8 +42,7 @@ static bool valid_cell_validator(target_ulong vaddr, uint128_t cell,
     bool not_deleted = (0 == del_flag);
     bool valid = (0 != val_flag);
     bool vaddr_in_cell = ((addr_vpn >= va_start) && (addr_vpn <= va_end));
-    bool has_access = ((0 != (perms & RT_V)) &&
-                       (0 != (perms & (RT_R | RT_W | RT_X))));
+    bool has_access = ((0 != (perms & RT_V)) && (0 != (perms & RT_PERMS)));
 
     return not_deleted && valid && vaddr_in_cell && has_access;
 }
@@ -65,7 +64,7 @@ static bool reval_validator(target_ulong vaddr, uint128_t cell, uint8_t perms)
     bool not_deleted = (0 == del_flag);
     bool invalid = (0 == val_flag);
     bool vaddr_in_cell = ((addr_vpn >= va_start) && (addr_vpn <= va_end));
-    bool has_no_access = (0 == (perms & (RT_V | RT_R | RT_W | RT_X)));
+    bool has_no_access = (0 == (perms & (RT_V | RT_PERMS)));
 
     return not_deleted && invalid && vaddr_in_cell && has_no_access;
 }
@@ -230,6 +229,11 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
+    /* The permissions parameter is only allowed to have the RWX bits set */
+    if (0 != (perms & ~RT_PERMS)) {
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
     MemTxResult res;
     MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
     CPUState *cs = env_cpu(env);
@@ -273,7 +277,7 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
         return -RISCV_EXCP_LOAD_ACCESS_FAULT;
     }
 
-    if (((uint8_t)perms | source_perms) != source_perms) {
+    if ((perms | source_perms) != source_perms) {
         /* Provided permissions are not a subset of the current permissions */
         return -RISCV_EXCP_ILLEGAL_INST;
     }
@@ -294,13 +298,13 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
         return -RISCV_EXCP_LOAD_ACCESS_FAULT;
     }
 
-    if (0 != ((uint8_t)perms & target_perms)) {
+    if (0 != (perms & target_perms)) {
         /* Current perms already contain at least parts of the new perms */
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
     /* Calculate and store new permissions for target SecDiv */
-    target_perms |= (perms & (RT_R | RT_W | RT_X));
+    target_perms |= perms;
 
     pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
                                                  target_perms_addr,
@@ -332,6 +336,11 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     }
     /* The instruction is only allowed if using SecCells virtual memory mode */
     if (get_field(env->satp, satp_mode) != VM_SECCELL) {
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    /* The permissions parameter is only allowed to have the RWX bits set */
+    if (0 != (perms & ~RT_PERMS)) {
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
@@ -375,13 +384,13 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
         return -RISCV_EXCP_LOAD_ACCESS_FAULT;
     }
 
-    if (((uint8_t)perms | current_perms) != current_perms) {
+    if ((perms | current_perms) != current_perms) {
         /* Provided permissions are not a subset of the current permissions */
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
     /* Calculate and store new permissions for SecDiv */
-    perms |= (current_perms & ~(RT_R | RT_W | RT_X));
+    perms |= (current_perms & ~RT_PERMS);
 
     pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
                                                  perms_addr, sizeof(uint8_t),
@@ -413,6 +422,11 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
     }
     /* The instruction is only allowed if using SecCells virtual memory mode */
     if (get_field(env->satp, satp_mode) != VM_SECCELL) {
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    /* The permissions parameter is only allowed to have the RWX bits set */
+    if (0 != (perms & ~RT_PERMS)) {
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
@@ -458,10 +472,8 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
             return -RISCV_EXCP_LOAD_ACCESS_FAULT;
         }
 
-        /* Restrict to RWX for subset checks */
-        perms &= (RT_R | RT_W | RT_X);
-        current_perms &= (RT_R | RT_W | RT_X);
-        if (((uint8_t)perms | current_perms) == current_perms) {
+        if (((perms | current_perms) == current_perms) &&
+            ((current_perms & RT_V) != 0)) {
             /* Found SecDiv s.t. perms subset current_perms => no exclusivity */
             (*dest)++;
         }
@@ -538,7 +550,7 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
             return -RISCV_EXCP_LOAD_ACCESS_FAULT;
         }
 
-        if ((i != usid) && (perms & (RT_V | RT_R | RT_W | RT_X)) != 0) {
+        if ((i != usid) && ((perms & RT_V) != 0) && ((perms & RT_PERMS) != 0)) {
             /* Some other SecDiv still has access => error out */
             return -RISCV_EXCP_ILLEGAL_INST;
         }
@@ -582,7 +594,8 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
             return -RISCV_EXCP_LOAD_ACCESS_FAULT;
         }
 
-        perms &= ~(RT_V | RT_R | RT_W | RT_X);
+        /* Clear valid bit and all permissions */
+        perms &= ~(RT_V | RT_PERMS);
 
         pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
                                                     perms_addr, sizeof(uint8_t),
@@ -614,6 +627,11 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     }
     /* The instruction is only allowed if using SecCells virtual memory mode */
     if (get_field(env->satp, satp_mode) != VM_SECCELL) {
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    /* The permissions parameter is only allowed to have the RWX bits set */
+    if (0 != (perms & ~RT_PERMS)) {
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
@@ -693,7 +711,7 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
         uint8_t new_perms = 0;
         if (i == usid) {
             /* For the requesting SecDiv: set perms to the requested perms */
-            new_perms = old_perms | RT_V | (perms & (RT_R | RT_W | RT_X));
+            new_perms = old_perms | RT_V | perms;
         } else {
             /* For all other SecDivs: just set the valid bit again */
             new_perms = old_perms | RT_V;
