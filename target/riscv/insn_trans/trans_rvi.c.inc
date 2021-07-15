@@ -578,6 +578,12 @@ static bool trans_csrrci(DisasContext *ctx, arg_csrrci *a)
 
 /* SecCells translations */
 
+static bool trans_entry(DisasContext *ctx, arg_entry *a)
+{
+    /* No implementation - executed as NOP */
+    return true;
+}
+
 static bool trans_grant(DisasContext *ctx, arg_grant *a)
 {
     TCGv perms = tcg_temp_new();
