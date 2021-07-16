@@ -578,6 +578,83 @@ static bool trans_csrrci(DisasContext *ctx, arg_csrrci *a)
 
 /* SecCells translations */
 
+static bool trans_js(DisasContext *ctx, arg_js *a)
+{
+    target_ulong next_pc;
+    next_pc = ctx->base.pc_next + a->imm;
+
+    /* Check misaligned */
+    if (!has_ext(ctx, RVC)) {
+        if ((next_pc & 0x3) != 0) {
+            gen_exception_inst_addr_mis(ctx);
+            return true;
+        }
+    } else {
+        if ((next_pc & 0x1) != 0) {
+            gen_exception_inst_addr_mis(ctx);
+            return true;
+        }
+    }
+
+    /* Check next instruction is entry */
+    uint32_t next_insn = opcode_at(&ctx->base, next_pc);
+    if (next_insn != 0x0000200b) {
+        gen_exception_illegal(ctx);
+        return true;
+    }
+
+    /* Switch SecDiv */
+    gen_helper_switch_secdiv(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE));
+
+    /* Do the actual control flow transfer */
+    gen_goto_tb(ctx, 0, ctx->base.pc_next + a->imm);
+    ctx->base.is_jmp = DISAS_NORETURN;
+
+    return true;
+}
+
+static bool trans_jrs(DisasContext *ctx, arg_jrs *a)
+{
+    /* no chaining with JALR */
+    TCGLabel *misaligned = NULL;
+    TCGv t0 = tcg_temp_new();
+
+    tcg_gen_addi_tl(cpu_pc, get_gpr(ctx, a->rs1, EXT_NONE), a->imm);
+    /* Silently ignore odd addresses (just like jalr) */
+    tcg_gen_andi_tl(cpu_pc, cpu_pc, (target_ulong)-2);
+
+    /* Check misaligned */
+    if (!has_ext(ctx, RVC)) {
+        misaligned = gen_new_label();
+        tcg_gen_andi_tl(t0, cpu_pc, 0x2);
+        tcg_gen_brcondi_tl(TCG_COND_NE, t0, 0x0, misaligned);
+    }
+
+    /* Check next instruction is entry */
+    /* ctx->base.pc_next should give us the same results as cpu_env since
+       they are supposed to point to the same memory location => still need to
+       verify this! */
+    uint32_t next_insn = opcode_at(&ctx->base, ctx->base.pc_next);
+    if (next_insn != 0x0000200b) {
+        gen_exception_illegal(ctx);
+        return true;
+    }
+
+    /* Switch SecDiv */
+    gen_helper_switch_secdiv(cpu_env, get_gpr(ctx, a->rd, EXT_NONE));
+    /* Do the actual control flow transfer */
+    tcg_gen_lookup_and_goto_ptr();
+
+    if (misaligned) {
+        gen_set_label(misaligned);
+        gen_exception_inst_addr_mis(ctx);
+    }
+    ctx->base.is_jmp = DISAS_NORETURN;
+
+    tcg_temp_free(t0);
+    return true;
+}
+
 static bool trans_entry(DisasContext *ctx, arg_entry *a)
 {
     /* No implementation - executed as NOP */

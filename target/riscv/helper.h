@@ -74,6 +74,7 @@ DEF_HELPER_1(tlb_flush, void, env)
 #endif
 
 /* SecCells */
+DEF_HELPER_2(switch_secdiv, void, env, tl)
 DEF_HELPER_4(grant, void, env, tl, tl, tl)
 DEF_HELPER_3(prot, void, env, tl, tl)
 DEF_HELPER_3(count, tl, env, tl, tl)

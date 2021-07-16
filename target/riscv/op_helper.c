@@ -70,6 +70,13 @@ target_ulong helper_csrrw(CPURISCVState *env, int csr,
     return val;
 }
 
+void helper_switch_secdiv(CPURISCVState *env, target_ulong target)
+{
+    /* Set URID to USID, USID to new target */
+    env->urid = env->usid;
+    env->usid = target;
+}
+
 void helper_grant(CPURISCVState *env, target_ulong addr, target_ulong target,
         target_ulong perms)
 {
