@@ -594,8 +594,14 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
             return -RISCV_EXCP_LOAD_ACCESS_FAULT;
         }
 
-        /* Clear valid bit and all permissions */
-        perms &= ~(RT_V | RT_PERMS);
+        if (0 == i) {
+            /* For supervisor: only clear valid bit, userspace shouldn't be able
+               to modify supervisor permissions */
+            perms &= ~(RT_V);
+        } else {
+            /* For non-supervisor: clear valid bit and all permissions */
+            perms &= ~(RT_V | RT_PERMS);
+        }
 
         pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
                                                     perms_addr, sizeof(uint8_t),
