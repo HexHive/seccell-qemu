@@ -304,7 +304,7 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
 
     /* Calculate and store new permissions for target SecDiv */
-    target_perms |= perms;
+    target_perms |= perms | RT_V;
 
     pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
                                                  target_perms_addr,
