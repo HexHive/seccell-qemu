@@ -604,7 +604,7 @@ static bool trans_js(DisasContext *ctx, arg_js *a)
     }
 
     /* Switch SecDiv */
-    gen_helper_switch_secdiv(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE));
+    gen_helper_js(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE));
 
     /* Do the actual control flow transfer */
     gen_goto_tb(ctx, 0, ctx->base.pc_next + a->imm);
@@ -630,18 +630,9 @@ static bool trans_jrs(DisasContext *ctx, arg_jrs *a)
         tcg_gen_brcondi_tl(TCG_COND_NE, t0, 0x0, misaligned);
     }
 
-    /* Check next instruction is entry */
-    /* ctx->base.pc_next should give us the same results as cpu_env since
-       they are supposed to point to the same memory location => still need to
-       verify this! */
-    uint32_t next_insn = opcode_at(&ctx->base, ctx->base.pc_next);
-    if (next_insn != 0x0000200b) {
-        gen_exception_illegal(ctx);
-        return true;
-    }
+    /* Check next instruction is entry and switch SecDiv in case of success */
+    gen_helper_jrs(cpu_env, cpu_pc, get_gpr(ctx, a->rd, EXT_NONE));
 
-    /* Switch SecDiv */
-    gen_helper_switch_secdiv(cpu_env, get_gpr(ctx, a->rd, EXT_NONE));
     /* Do the actual control flow transfer */
     tcg_gen_lookup_and_goto_ptr();
 

@@ -70,11 +70,23 @@ target_ulong helper_csrrw(CPURISCVState *env, int csr,
     return val;
 }
 
-void helper_switch_secdiv(CPURISCVState *env, target_ulong target)
+void helper_js(CPURISCVState *env, target_ulong target)
 {
     /* Set URID to USID, USID to new target */
     env->urid = env->usid;
     env->usid = target;
+}
+
+void helper_jrs(CPURISCVState *env, target_ulong pc, target_ulong secdiv)
+{
+    if (cpu_ldl_code(env, pc) != 0x0000200b) {
+        /* Next instruction is not an entry instruction as expected */
+        riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+    } else {
+        /* Next instruction is valid entry instruction => switch SecDiv */
+        env->urid = env->usid;
+        env->usid = secdiv;
+    }
 }
 
 void helper_grant(CPURISCVState *env, target_ulong addr, target_ulong target,
