@@ -70,11 +70,11 @@ target_ulong helper_csrrw(CPURISCVState *env, int csr,
     return val;
 }
 
-void helper_js(CPURISCVState *env, target_ulong target)
+void helper_js(CPURISCVState *env, target_ulong secdiv)
 {
-    /* Set URID to USID, USID to new target */
+    /* Set URID to USID, USID to new secdiv */
     env->urid = env->usid;
-    env->usid = target;
+    env->usid = secdiv;
 }
 
 void helper_jrs(CPURISCVState *env, target_ulong pc, target_ulong secdiv)

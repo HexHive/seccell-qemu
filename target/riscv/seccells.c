@@ -154,7 +154,12 @@ int riscv_find_cell_addr(CPURISCVState *env, cell_loc_t *cell,
         /* Error occured => pass the error on */
         return meta_ret;
     }
+
     target_ulong usid = env->usid;
+    if (usid > (meta.M - 1)) {
+        /* Invalid / too high SecDiv ID */
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
 
     /* Find the requested cell */
     for (unsigned int i = 1; i < meta.N; i++) {
@@ -254,6 +259,10 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
 
     /* Calculate the necessary addresses */
     target_ulong usid = env->usid;
+    if (usid > (meta.M - 1)) {
+        /* Invalid / too high SecDiv ID */
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
     hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
     hwaddr source_perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * usid)
                                + cell.idx;
@@ -364,6 +373,10 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
 
     /* Calculate the necessary address */
     target_ulong usid = env->usid;
+    if (usid > (meta.M - 1)) {
+        /* Invalid / too high SecDiv ID */
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
     hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
     hwaddr perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * usid)
                         + cell.idx;
@@ -534,6 +547,10 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
     hwaddr perms_addr;
     uint8_t perms;
     target_ulong usid = env->usid;
+    if (usid > (meta.M - 1)) {
+        /* Invalid / too high SecDiv ID */
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
     hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
     for (unsigned int i = 1; i < meta.M; i++) {
         perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * i) + cell.idx;
@@ -698,6 +715,10 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     }
 
     target_ulong usid = env->usid;
+    if (usid > (meta.M - 1)) {
+        /* Invalid / too high SecDiv ID */
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
     hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
 
     for (unsigned int i = 0; i < meta.M; i++) {

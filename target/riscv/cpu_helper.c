@@ -558,14 +558,19 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
 
         /* N = number of cells */
         target_ulong N = (metacell >> RT_META_N_SHIFT) & RT_META_N_MASK;
-        /* M = number of secdivs (currently not used in address translation) */
-        ATTRIBUTE_UNUSED target_ulong M = (metacell >> RT_META_M_SHIFT) & RT_META_M_MASK;
+        /* M = number of secdivs */
+        target_ulong M = (metacell >> RT_META_M_SHIFT) & RT_META_M_MASK;
         /* T = number of 64 byte lines for secdiv perms */
         target_ulong T = (metacell >> RT_META_T_SHIFT) & RT_META_T_MASK;
         /* S = number of 64 byte lines available for cells */
         target_ulong S = CELL_DESC_SZ * T;
 
         target_ulong usid = env->usid;
+        if (usid > (M - 1)) {
+            /* Invalid / too high SecDiv ID */
+            return TRANSLATE_FAIL;
+        }
+
         for (unsigned int n = 1; n < N; n++) {
             hwaddr desc_addr = base + n * CELL_DESC_SZ;
             hwaddr perm_addr = base + (S * 64) + (usid * T * 64) + n;
