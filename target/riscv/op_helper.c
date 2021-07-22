@@ -72,6 +72,11 @@ target_ulong helper_csrrw(CPURISCVState *env, int csr,
 
 void helper_js(CPURISCVState *env, target_ulong secdiv)
 {
+    if (0 == secdiv) {
+        /* Disallow switching to supervisor SecDiv => only enter supervisor
+           SecDiv through traps into supervisor mode */
+        riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+    }
     /* Set URID to USID, USID to new secdiv */
     env->urid = env->usid;
     env->usid = secdiv;
@@ -79,8 +84,10 @@ void helper_js(CPURISCVState *env, target_ulong secdiv)
 
 void helper_jrs(CPURISCVState *env, target_ulong pc, target_ulong secdiv)
 {
-    if (cpu_ldl_code(env, pc) != 0x0000200b) {
-        /* Next instruction is not an entry instruction as expected */
+    if (cpu_ldl_code(env, pc) != 0x0000200b || 0 == secdiv) {
+        /* Next instruction is not an entry instruction as expected or user
+           tries to switch to supervisor SecDiv without trapping into supervisor
+           mode */
         riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
     } else {
         /* Next instruction is valid entry instruction => switch SecDiv */
