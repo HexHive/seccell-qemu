@@ -635,7 +635,7 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
                 return TRANSLATE_FAIL;
             else {
                 /* if necessary, set accessed and dirty bits. */
-                target_ulong updated_perms = perms | RT_A |
+                uint8_t updated_perms = perms | RT_A |
                     (access_type == MMU_DATA_STORE ? RT_D : 0);
 
                 if (updated_perms != perms) {
@@ -645,7 +645,7 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
                     mr = address_space_translate(cs->as, perm_addr,
                         &addr1, &l, false, MEMTXATTRS_UNSPECIFIED);
                     if (memory_region_is_ram(mr)) {
-                        target_ulong *perm_pa =
+                        uint8_t *perm_pa =
                             qemu_map_ram_ptr(mr->ram_block, addr1);
 
                         /* MTTCG is not enabled on oversized TCG guests so
