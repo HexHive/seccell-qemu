@@ -422,6 +422,131 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
 }
 
 /*
+ * Grant permissions on a cell to another SecDiv and drop own permissions
+ */
+int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
+                target_ulong perms)
+{
+    /* The instruction is only allowed if using SecCells virtual memory mode */
+    if (get_field(env->satp, SATP_MODE) != VM_SECCELL) {
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    /* The permissions parameter is only allowed to have the RWX bits set */
+    if (0 != (perms & ~RT_PERMS)) {
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    MemTxResult res;
+    MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
+    CPUState *cs = env_cpu(env);
+
+    cell_loc_t cell;
+    int ret = riscv_find_cell_addr(env, &cell, vaddr, valid_cell_validator);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    sc_meta_t meta;
+    ret = riscv_get_sc_meta(env, &meta);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    /* Calculate the necessary addresses */
+    target_ulong usid = env->usid;
+    if (usid > (meta.M - 1)) {
+        /* Invalid / too high SecDiv ID */
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
+    hwaddr source_perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * usid)
+                               + cell.idx;
+    hwaddr target_perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * target)
+                               + cell.idx;
+
+    /* Load and check current SecDiv permissions */
+    int pmp_prot;
+    int pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
+                                                     source_perms_addr,
+                                                     sizeof(uint8_t),
+                                                     MMU_DATA_LOAD, PRV_S);
+    if (pmp_ret != TRANSLATE_SUCCESS) {
+        return -RISCV_EXCP_LOAD_ACCESS_FAULT;
+    }
+
+    uint8_t source_perms = (uint8_t) address_space_ldub(cs->as,
+                                                        source_perms_addr,
+                                                        attrs, &res);
+    if (res != MEMTX_OK) {
+        return -RISCV_EXCP_LOAD_ACCESS_FAULT;
+    }
+
+    if ((perms | source_perms) != source_perms) {
+        /* Provided permissions are not a subset of the current permissions */
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    /* Load and check target SecDiv permissions */
+    pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
+                                                 target_perms_addr,
+                                                 sizeof(uint8_t),
+                                                 MMU_DATA_LOAD, PRV_S);
+    if (pmp_ret != TRANSLATE_SUCCESS) {
+        return -RISCV_EXCP_LOAD_ACCESS_FAULT;
+    }
+
+    uint8_t target_perms = (uint8_t) address_space_ldub(cs->as,
+                                                        target_perms_addr,
+                                                        attrs, &res);
+    if (res != MEMTX_OK) {
+        return -RISCV_EXCP_LOAD_ACCESS_FAULT;
+    }
+
+    if (0 != (perms & target_perms)) {
+        /* Current perms already contain at least parts of the new perms */
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    /* Calculate and store new permissions for target SecDiv */
+    target_perms |= perms | RT_V;
+
+    pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
+                                                 target_perms_addr,
+                                                 sizeof(uint8_t),
+                                                 MMU_DATA_STORE, PRV_S);
+    if (pmp_ret != TRANSLATE_SUCCESS) {
+        return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+    }
+
+    address_space_stb(cs->as, target_perms_addr, target_perms, attrs, &res);
+    if (res != MEMTX_OK) {
+        return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+    }
+
+    /* Drop permissions for source SecDiv */
+    perms &= ~RT_PERMS;
+
+    pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
+                                                 source_perms_addr,
+                                                 sizeof(uint8_t),
+                                                 MMU_DATA_STORE, PRV_S);
+    if (pmp_ret != TRANSLATE_SUCCESS) {
+        return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+    }
+
+    address_space_stb(cs->as, source_perms_addr, perms, attrs, &res);
+    if (res != MEMTX_OK) {
+        return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+    }
+
+    tlb_flush(cs);
+    return 0;
+}
+
+/*
  * Count the number of SecDivs having access to a cell with specified perms
  */
 int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,

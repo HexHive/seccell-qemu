@@ -51,9 +51,11 @@ int riscv_get_sc_meta(CPURISCVState *env, sc_meta_t *meta);
 int riscv_find_cell_addr(CPURISCVState *env, cell_loc_t *cell,
                          target_ulong vaddr,
                          bool (*validator)(target_ulong, uint128_t, uint8_t));
+int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms);
 int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
                 target_ulong perms);
-int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms);
+int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
+                target_ulong perms);
 int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
                 target_ulong perms);
 int riscv_inval(CPURISCVState *env, target_ulong vaddr);

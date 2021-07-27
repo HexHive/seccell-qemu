@@ -621,7 +621,7 @@ static bool trans_jrs(DisasContext *ctx, arg_jrs *a)
 
     tcg_gen_addi_tl(cpu_pc, get_gpr(ctx, a->rs1, EXT_NONE), a->imm);
     /* Silently ignore odd addresses (just like jalr) */
-    tcg_gen_andi_tl(cpu_pc, cpu_pc, (target_ulong)-2);
+    tcg_gen_andi_tl(cpu_pc, get_gpr(ctx, a->rs1, EXT_NONE), (target_ulong)-2);
 
     /* Check misaligned */
     if (!has_ext(ctx, RVC)) {
@@ -652,6 +652,14 @@ static bool trans_entry(DisasContext *ctx, arg_entry *a)
     return true;
 }
 
+static bool trans_prot(DisasContext *ctx, arg_prot *a)
+{
+    gen_helper_prot(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                    get_gpr(ctx, a->rs2, EXT_NONE));
+
+    return true;
+}
+
 static bool trans_grant(DisasContext *ctx, arg_grant *a)
 {
     TCGv perms = tcg_temp_new();
@@ -664,11 +672,15 @@ static bool trans_grant(DisasContext *ctx, arg_grant *a)
     return true;
 }
 
-static bool trans_prot(DisasContext *ctx, arg_prot *a)
+static bool trans_tfer(DisasContext *ctx, arg_tfer *a)
 {
-    gen_helper_prot(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
-                    get_gpr(ctx, a->rs2, EXT_NONE));
+    TCGv perms = tcg_temp_new();
+    tcg_gen_movi_tl(perms, a->imm);
 
+    gen_helper_tfer(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                    get_gpr(ctx, a->rs2, EXT_NONE), perms);
+
+    tcg_temp_free(perms);
     return true;
 }
 

@@ -96,6 +96,15 @@ void helper_jrs(CPURISCVState *env, target_ulong pc, target_ulong secdiv)
     }
 }
 
+void helper_prot(CPURISCVState *env, target_ulong addr, target_ulong perms)
+{
+    int ret = riscv_protect(env, addr, perms);
+
+    if (ret < 0) {
+        riscv_raise_exception(env, -ret, GETPC());
+    }
+}
+
 void helper_grant(CPURISCVState *env, target_ulong addr, target_ulong target,
         target_ulong perms)
 {
@@ -106,9 +115,10 @@ void helper_grant(CPURISCVState *env, target_ulong addr, target_ulong target,
     }
 }
 
-void helper_prot(CPURISCVState *env, target_ulong addr, target_ulong perms)
+void helper_tfer(CPURISCVState *env, target_ulong addr, target_ulong target,
+        target_ulong perms)
 {
-    int ret = riscv_protect(env, addr, perms);
+    int ret = riscv_tfer(env, addr, target, perms);
 
     if (ret < 0) {
         riscv_raise_exception(env, -ret, GETPC());
