@@ -70,7 +70,7 @@ target_ulong helper_csrrw(CPURISCVState *env, int csr,
     return val;
 }
 
-void helper_js(CPURISCVState *env, target_ulong secdiv)
+void helper_jals(CPURISCVState *env, target_ulong secdiv)
 {
     if (0 == secdiv) {
         /* Disallow switching to supervisor SecDiv => only enter supervisor
@@ -82,7 +82,7 @@ void helper_js(CPURISCVState *env, target_ulong secdiv)
     env->usid = secdiv;
 }
 
-void helper_jrs(CPURISCVState *env, target_ulong pc, target_ulong secdiv)
+void helper_jalrs(CPURISCVState *env, target_ulong pc, target_ulong secdiv)
 {
     if (cpu_ldl_code(env, pc) != 0x0000200b || 0 == secdiv) {
         /* Next instruction is not an entry instruction as expected or user

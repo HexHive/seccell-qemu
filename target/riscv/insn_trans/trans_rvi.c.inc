@@ -578,7 +578,7 @@ static bool trans_csrrci(DisasContext *ctx, arg_csrrci *a)
 
 /* SecCells translations */
 
-static bool trans_js(DisasContext *ctx, arg_js *a)
+static bool trans_jals(DisasContext *ctx, arg_jals *a)
 {
     target_ulong next_pc;
     next_pc = ctx->base.pc_next + a->imm;
@@ -586,11 +586,6 @@ static bool trans_js(DisasContext *ctx, arg_js *a)
     /* Check misaligned */
     if (!has_ext(ctx, RVC)) {
         if ((next_pc & 0x3) != 0) {
-            gen_exception_inst_addr_mis(ctx);
-            return true;
-        }
-    } else {
-        if ((next_pc & 0x1) != 0) {
             gen_exception_inst_addr_mis(ctx);
             return true;
         }
@@ -604,7 +599,12 @@ static bool trans_js(DisasContext *ctx, arg_js *a)
     }
 
     /* Switch SecDiv */
-    gen_helper_js(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE));
+    gen_helper_jals(cpu_env, get_gpr(ctx, a->rd, EXT_NONE));
+
+    /* Store return address */
+    if (a->rd != 0) {
+        tcg_gen_movi_tl(cpu_gpr[a->rd], ctx->pc_succ_insn);
+    }
 
     /* Do the actual control flow transfer */
     gen_goto_tb(ctx, 0, ctx->base.pc_next + a->imm);
@@ -613,13 +613,12 @@ static bool trans_js(DisasContext *ctx, arg_js *a)
     return true;
 }
 
-static bool trans_jrs(DisasContext *ctx, arg_jrs *a)
+static bool trans_jalrs(DisasContext *ctx, arg_jalrs *a)
 {
-    /* no chaining with JALR */
+    /* no chaining with JALRS */
     TCGLabel *misaligned = NULL;
     TCGv t0 = tcg_temp_new();
 
-    tcg_gen_addi_tl(cpu_pc, get_gpr(ctx, a->rs1, EXT_NONE), a->imm);
     /* Silently ignore odd addresses (just like jalr) */
     tcg_gen_andi_tl(cpu_pc, get_gpr(ctx, a->rs1, EXT_NONE), (target_ulong)-2);
 
@@ -631,7 +630,12 @@ static bool trans_jrs(DisasContext *ctx, arg_jrs *a)
     }
 
     /* Check next instruction is entry and switch SecDiv in case of success */
-    gen_helper_jrs(cpu_env, cpu_pc, get_gpr(ctx, a->rd, EXT_NONE));
+    gen_helper_jalrs(cpu_env, cpu_pc, get_gpr(ctx, a->rs2, EXT_NONE));
+
+    /* Store return address */
+    if (a->rd != 0) {
+        tcg_gen_movi_tl(cpu_gpr[a->rd], ctx->pc_succ_insn);
+    }
 
     /* Do the actual control flow transfer */
     tcg_gen_lookup_and_goto_ptr();
