@@ -245,7 +245,7 @@ int riscv_get_sc_meta(CPURISCVState *env, sc_meta_t *meta)
  * Find the address of a cell that fulfills a certain validation criterion in
  * the range table
  */
-int riscv_find_cell_addr(CPURISCVState *env, cell_loc_t *cell,
+int riscv_find_cell_addr(CPURISCVState *env, sc_meta_t *meta, cell_loc_t *cell,
                          target_ulong vaddr,
                          bool (*validator)(target_ulong, uint128_t, uint8_t))
 {
@@ -255,23 +255,16 @@ int riscv_find_cell_addr(CPURISCVState *env, cell_loc_t *cell,
     /* Remove sign-extended bits */
     vaddr &= (1ull << va_bits) - 1;
 
-    sc_meta_t meta;
-    int meta_ret = riscv_get_sc_meta(env, &meta);
-    if (meta_ret < 0) {
-        /* Encountered an error => pass it on */
-        return meta_ret;
-    }
-
     target_ulong usid = env->usid;
-    if (usid > (meta.M - 1)) {
+    if (usid > (meta->M - 1)) {
         /* Invalid / too high SecDiv ID */
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
     /* Find the requested cell */
-    for (unsigned int i = 1; i < meta.N; i++) {
+    for (unsigned int i = 1; i < meta->N; i++) {
         hwaddr cell_addr = rt_base + i * CELL_DESC_SZ;
-        hwaddr perm_addr = rt_base + (meta.S * 64) + (usid * meta.T * 64) + i;
+        hwaddr perm_addr = rt_base + (meta->S * 64) + (usid * meta->T * 64) + i;
 
         uint128_t cell_desc;
         int res = load_cell(env, cell_addr, &cell_desc);
@@ -325,15 +318,15 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
-    cell_loc_t cell;
-    int ret = riscv_find_cell_addr(env, &cell, vaddr, valid_cell_validator);
+    sc_meta_t meta;
+    int ret = riscv_get_sc_meta(env, &meta);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
     }
 
-    sc_meta_t meta;
-    ret = riscv_get_sc_meta(env, &meta);
+    cell_loc_t cell;
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, valid_cell_validator);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -412,15 +405,15 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
-    cell_loc_t cell;
-    int ret = riscv_find_cell_addr(env, &cell, vaddr, valid_cell_validator);
+    sc_meta_t meta;
+    int ret = riscv_get_sc_meta(env, &meta);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
     }
 
-    sc_meta_t meta;
-    ret = riscv_get_sc_meta(env, &meta);
+    cell_loc_t cell;
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, valid_cell_validator);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -485,15 +478,15 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
-    cell_loc_t cell;
-    int ret = riscv_find_cell_addr(env, &cell, vaddr, valid_cell_validator);
+    sc_meta_t meta;
+    int ret = riscv_get_sc_meta(env, &meta);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
     }
 
-    sc_meta_t meta;
-    ret = riscv_get_sc_meta(env, &meta);
+    cell_loc_t cell;
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, valid_cell_validator);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -582,15 +575,15 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
-    cell_loc_t cell;
-    int ret = riscv_find_cell_addr(env, &cell, vaddr, count_validator);
+    sc_meta_t meta;
+    int ret = riscv_get_sc_meta(env, &meta);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
     }
 
-    sc_meta_t meta;
-    ret = riscv_get_sc_meta(env, &meta);
+    cell_loc_t cell;
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, count_validator);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -637,15 +630,15 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
-    cell_loc_t cell;
-    int ret = riscv_find_cell_addr(env, &cell, vaddr, valid_cell_validator);
+    sc_meta_t meta;
+    int ret = riscv_get_sc_meta(env, &meta);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
     }
 
-    sc_meta_t meta;
-    ret = riscv_get_sc_meta(env, &meta);
+    cell_loc_t cell;
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, valid_cell_validator);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -745,8 +738,15 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
+    sc_meta_t meta;
+    int ret = riscv_get_sc_meta(env, &meta);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
     cell_loc_t cell;
-    int ret = riscv_find_cell_addr(env, &cell, vaddr, reval_validator);
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, reval_validator);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -764,13 +764,6 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     cell_desc |= ((uint128_t)RT_VAL_MASK << RT_VAL_SHIFT);
 
     ret = store_cell(env, cell.paddr, &cell_desc);
-    if (ret < 0) {
-        /* Encountered an error => pass it on */
-        return ret;
-    }
-
-    sc_meta_t meta;
-    ret = riscv_get_sc_meta(env, &meta);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
