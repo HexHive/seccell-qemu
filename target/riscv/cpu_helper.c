@@ -25,6 +25,7 @@
 #include "tcg/tcg-op.h"
 #include "trace.h"
 #include "semihosting/common-semi.h"
+#include "seccells.h"
 
 int riscv_cpu_mmu_index(CPURISCVState *env, bool ifetch)
 {
@@ -542,145 +543,110 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
         /* Remove sign-extended bits from addr */
         addr &= (1ULL << va_bits) - 1;
 
-#ifdef __SIZEOF_INT128__
-        typedef unsigned __int128 uint128_t;
-#endif
         /* Retrieve values from metacell */
-        uint128_t metacell = address_space_ldq(cs->as, base + TARGET_LONG_SIZE, attrs, &res);
-        if (res != MEMTX_OK) {
+        sc_meta_t meta;
+        int err = riscv_get_sc_meta(env, &meta);
+        if (err < 0) {
+            /* Could not even get the metacell's contents */
             return TRANSLATE_FAIL;
         }
-        metacell <<= TARGET_LONG_BITS;
-        metacell |= address_space_ldq(cs->as, base, attrs, &res);
-        if (res != MEMTX_OK) {
-            return TRANSLATE_FAIL;
-        }
-
-        /* N = number of cells */
-        target_ulong N = (metacell >> RT_META_N_SHIFT) & RT_META_N_MASK;
-        /* M = number of secdivs */
-        target_ulong M = (metacell >> RT_META_M_SHIFT) & RT_META_M_MASK;
-        /* T = number of 64 byte lines for secdiv perms */
-        target_ulong T = (metacell >> RT_META_T_SHIFT) & RT_META_T_MASK;
-        /* S = number of 64 byte lines available for cells */
-        target_ulong S = CELL_DESC_SZ * T;
 
         target_ulong usid = env->usid;
-        if (usid > (M - 1)) {
+        if (usid > (meta.M - 1)) {
             /* Invalid / too high SecDiv ID */
             return TRANSLATE_FAIL;
         }
 
-        for (unsigned int n = 1; n < N; n++) {
-            hwaddr desc_addr = base + n * CELL_DESC_SZ;
-            hwaddr perm_addr = base + (S * 64) + (usid * T * 64) + n;
-
-            int pmp_prot;
-            int pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot,
-                                                             NULL, desc_addr,
-                                                             sizeof(uint128_t),
-                                                             MMU_DATA_LOAD,
-                                                             PRV_S);
-            if (pmp_ret != TRANSLATE_SUCCESS) {
-                return TRANSLATE_PMP_FAIL;
-            }
-
-            uint128_t cell_desc = address_space_ldq(cs->as,
-                                                    desc_addr + TARGET_LONG_SIZE,
-                                                    attrs, &res);
-            if (res != MEMTX_OK) {
-                return TRANSLATE_FAIL;
-            }
-            cell_desc <<= TARGET_LONG_BITS;
-            cell_desc |= address_space_ldq(cs->as, desc_addr, attrs, &res);
-            if (res != MEMTX_OK) {
-                return TRANSLATE_FAIL;
-            }
-
-            uint8_t del_flag = (cell_desc >> RT_DEL_SHIFT) & RT_DEL_MASK;
-            uint8_t val_flag = (cell_desc >> RT_VAL_SHIFT) & RT_VAL_MASK;
-            target_ulong va_start = ((cell_desc >> RT_VA_START_SHIFT)
-                                        & RT_VA_MASK) << PGSHIFT;
-            target_ulong va_end = ((cell_desc >> RT_VA_END_SHIFT)
-                                        & RT_VA_MASK) << PGSHIFT;
-            target_ulong addr_vpn = (addr >> PGSHIFT) << PGSHIFT;
-            if ((0 != del_flag) || (0 == val_flag) ||
-                (addr_vpn > va_end) || (addr_vpn < va_start))
-            {
-                /* Cell marked as deleted or invalid or doesn't cover address */
-                continue;
-            }
-
-            uint8_t perms = (uint8_t) address_space_ldq(cs->as, perm_addr,
-                                                        attrs, &res);
-
-            if (!(perms & (RT_R | RT_W | RT_X)) || !(perms & RT_V))
-                /* No permissions or valid bit not set, try a different cell */
-                continue;
-            else if ((perms & (RT_R | RT_W | RT_X)) == RT_W)
-                /* riscv: Write without read not allowed */
-                return TRANSLATE_FAIL;
-            else if ((perms & (RT_R | RT_W | RT_X)) == (RT_W | RT_X))
-                /* riscv: Write without read not allowed */
-                return TRANSLATE_FAIL;
-            else if (access_type == MMU_DATA_LOAD && !((perms & RT_R) ||
-                    ((perms & RT_X) && mxr)))
-                /* Read access check failed */
-                return TRANSLATE_FAIL;
-            else if (access_type == MMU_DATA_STORE && !(perms & RT_W))
-                /* Write access check failed */
-                return TRANSLATE_FAIL;
-            else if (access_type == MMU_INST_FETCH && !(perms & RT_X))
-                /* Fetch access check failed */
-                return TRANSLATE_FAIL;
-            else {
-                /* if necessary, set accessed and dirty bits. */
-                uint8_t updated_perms = perms | RT_A |
-                    (access_type == MMU_DATA_STORE ? RT_D : 0);
-
-                if (updated_perms != perms) {
-                    /* Atomicity concerns with MTTCG */
-                    MemoryRegion *mr;
-                    hwaddr l = 1, addr1;
-                    mr = address_space_translate(cs->as, perm_addr,
-                        &addr1, &l, false, MEMTXATTRS_UNSPECIFIED);
-                    if (memory_region_is_ram(mr)) {
-                        uint8_t *perm_pa =
-                            qemu_map_ram_ptr(mr->ram_block, addr1);
-
-                        /* MTTCG is not enabled on oversized TCG guests so
-                        * page table updates do not need to be atomic */
-                        *perm_pa = perms = updated_perms;
-                    } else {
-                        /* misconfigured PTE in ROM (AD bits are not preset) or
-                        * PTE is in IO space and can't be updated atomically */
-                        return TRANSLATE_FAIL;
-                    }
-                }
-
-                /* All checks pass, return the physical address */
-                target_ulong pa_start = ((cell_desc >> RT_PA_SHIFT)
-                                            & RT_PA_MASK) << PGSHIFT;
-                *physical = (addr - va_start) + pa_start;
-
-                /* set permissions on the TLB entry */
-                if ((perms & RT_R) || ((perms & RT_X) && mxr)) {
-                    *prot |= PAGE_READ;
-                }
-                if ((perms & RT_X)) {
-                    *prot |= PAGE_EXEC;
-                }
-                /* add write permission on stores or if the page is already dirty,
-                so that we TLB miss on later writes to update the dirty bit */
-                if ((perms & RT_W) &&
-                        (access_type == MMU_DATA_STORE || (perms & RT_D))) {
-                    *prot |= PAGE_WRITE;
-                }
-                return TRANSLATE_SUCCESS;
-            }
+        cell_loc_t cell;
+        err = riscv_find_cell_addr(env, &meta, &cell, addr,
+                                   valid_cell_validator);
+        if (err < 0) {
+            /* Could not find a valid cell with the requested virtual address */
+            return TRANSLATE_FAIL;
         }
 
+        hwaddr perm_addr = base + (meta.S * 64) + (usid * meta.T * 64)
+                           + cell.idx;
 
+        uint8_t perms;
+        err = riscv_load_perms(env, perm_addr, &perms);
+        if (err < 0) {
+            /* Could not get permissions */
+            return TRANSLATE_FAIL;
+        }
+
+        /* No need to check whether there are permissions at all => already done
+           when searching for the cell in the range table */
+        if ((perms & (RT_R | RT_W | RT_X)) == RT_W)
+            /* riscv: Write without read not allowed */
+            return TRANSLATE_FAIL;
+        else if ((perms & (RT_R | RT_W | RT_X)) == (RT_W | RT_X))
+            /* riscv: Write without read not allowed */
+            return TRANSLATE_FAIL;
+        else if (access_type == MMU_DATA_LOAD && !((perms & RT_R) ||
+                ((perms & RT_X) && mxr)))
+            /* Read access check failed */
+            return TRANSLATE_FAIL;
+        else if (access_type == MMU_DATA_STORE && !(perms & RT_W))
+            /* Write access check failed */
+            return TRANSLATE_FAIL;
+        else if (access_type == MMU_INST_FETCH && !(perms & RT_X))
+            /* Fetch access check failed */
+            return TRANSLATE_FAIL;
+        else {
+            /* if necessary, set accessed and dirty bits. */
+            uint8_t updated_perms = perms | RT_A |
+                (access_type == MMU_DATA_STORE ? RT_D : 0);
+
+            if (updated_perms != perms) {
+                /* Atomicity concerns with MTTCG */
+                MemoryRegion *mr;
+                hwaddr l = 1, addr1;
+                mr = address_space_translate(cs->as, perm_addr, &addr1, &l,
+                                             false, MEMTXATTRS_UNSPECIFIED);
+                if (memory_region_is_ram(mr)) {
+                    uint8_t *perm_pa =
+                        qemu_map_ram_ptr(mr->ram_block, addr1);
+
+                    /* MTTCG is not enabled on oversized TCG guests so
+                    * page table updates do not need to be atomic */
+                    *perm_pa = perms = updated_perms;
+                } else {
+                    /* misconfigured PTE in ROM (AD bits are not preset) or
+                    * PTE is in IO space and can't be updated atomically */
+                    return TRANSLATE_FAIL;
+                }
+            }
+
+            uint128_t cell_desc;
+            err = riscv_load_cell(env, cell.paddr, &cell_desc);
+            if (err < 0) {
+                /* Could not get cell description */
+                return TRANSLATE_FAIL;
+            }
+
+            /* All checks pass, return the physical address */
+            target_ulong pa_start = ((cell_desc >> RT_PA_SHIFT)
+                                      & RT_PA_MASK) << PGSHIFT;
+            target_ulong va_start = ((cell_desc >> RT_VA_START_SHIFT)
+                                      & RT_VA_MASK) << PGSHIFT;
+            *physical = (addr - va_start) + pa_start;
+
+            /* set permissions on the TLB entry */
+            if ((perms & RT_R) || ((perms & RT_X) && mxr)) {
+                *prot |= PAGE_READ;
+            }
+            if ((perms & RT_X)) {
+                *prot |= PAGE_EXEC;
+            }
+            /* add write permission on stores or if the page is already dirty,
+            so that we TLB miss on later writes to update the dirty bit */
+            if ((perms & RT_W) &&
+                    (access_type == MMU_DATA_STORE || (perms & RT_D))) {
+                *prot |= PAGE_WRITE;
+            }
+            return TRANSLATE_SUCCESS;
+        }
     } else {
 #endif
         int ptshift = (levels - 1) * ptidxbits;

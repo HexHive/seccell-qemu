@@ -28,8 +28,7 @@
  * Validate that a cell adheres to the criterion required by, e.g., inval, grant
  * Criterion: not deleted, valid, given vaddr contained in cell, some perms
  */
-static bool valid_cell_validator(target_ulong vaddr, uint128_t cell,
-                                 uint8_t perms)
+bool valid_cell_validator(target_ulong vaddr, uint128_t cell, uint8_t perms)
 {
     uint8_t del_flag = (cell >> RT_DEL_SHIFT) & RT_DEL_MASK;
     uint8_t val_flag = (cell >> RT_VAL_SHIFT) & RT_VAL_MASK;
@@ -93,7 +92,7 @@ static bool count_validator(target_ulong vaddr, uint128_t cell, uint8_t perms)
 /*
  * Load a cell from the range table
  */
-static int load_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell)
+int riscv_load_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell)
 {
     MemTxResult res;
     MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
@@ -129,7 +128,7 @@ static int load_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell)
 /*
  * Store a cell to the range table
  */
-static int store_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell)
+int riscv_store_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell)
 {
     MemTxResult res;
     MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
@@ -162,7 +161,7 @@ static int store_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell)
 /*
  * Load permissions from the range table
  */
-static int load_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms)
+int riscv_load_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms)
 {
     MemTxResult res;
     MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
@@ -192,7 +191,7 @@ static int load_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms)
 /*
  * Store permissions to the range table
  */
-static int store_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms)
+int riscv_store_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms)
 {
     MemTxResult res;
     MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
@@ -227,7 +226,7 @@ int riscv_get_sc_meta(CPURISCVState *env, sc_meta_t *meta)
 
     /* Retrieve values from metacell */
     uint128_t metacell;
-    int res = load_cell(env, rt_base, &metacell);
+    int res = riscv_load_cell(env, rt_base, &metacell);
     if (res < 0) {
         /* Encountered an error => pass it on */
         return res;
@@ -267,14 +266,14 @@ int riscv_find_cell_addr(CPURISCVState *env, sc_meta_t *meta, cell_loc_t *cell,
         hwaddr perm_addr = rt_base + (meta->S * 64) + (usid * meta->T * 64) + i;
 
         uint128_t cell_desc;
-        int res = load_cell(env, cell_addr, &cell_desc);
+        int res = riscv_load_cell(env, cell_addr, &cell_desc);
         if (res < 0) {
             /* Encountered an error => pass it on */
             return res;
         }
 
         uint8_t perms;
-        res = load_perms(env, perm_addr, &perms);
+        res = riscv_load_perms(env, perm_addr, &perms);
         if (res < 0) {
             /* Encountered an error => pass it on */
             return res;
@@ -346,7 +345,7 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
 
     /* Load and check current SecDiv permissions */
     uint8_t source_perms;
-    ret = load_perms(env, source_perms_addr, &source_perms);
+    ret = riscv_load_perms(env, source_perms_addr, &source_perms);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -359,7 +358,7 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
 
     /* Load and check target SecDiv permissions */
     uint8_t target_perms;
-    ret = load_perms(env, target_perms_addr, &target_perms);
+    ret = riscv_load_perms(env, target_perms_addr, &target_perms);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -373,7 +372,7 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     /* Calculate and store new permissions for target SecDiv */
     target_perms |= perms | RT_V;
 
-    ret = store_perms(env, target_perms_addr, &target_perms);
+    ret = riscv_store_perms(env, target_perms_addr, &target_perms);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -431,7 +430,7 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
 
     /* Load and check current SecDiv permissions */
     uint8_t current_perms;
-    ret = load_perms(env, perms_addr, &current_perms);
+    ret = riscv_load_perms(env, perms_addr, &current_perms);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -445,7 +444,7 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     /* Calculate and store new permissions for SecDiv */
     perms |= (current_perms & ~RT_PERMS);
 
-    ret = store_perms(env, perms_addr, (uint8_t *)&perms);
+    ret = riscv_store_perms(env, perms_addr, (uint8_t *)&perms);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -506,7 +505,7 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
 
     /* Load and check current SecDiv permissions */
     uint8_t source_perms;
-    ret = load_perms(env, source_perms_addr, &source_perms);
+    ret = riscv_load_perms(env, source_perms_addr, &source_perms);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -519,7 +518,7 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
 
     /* Load and check target SecDiv permissions */
     uint8_t target_perms;
-    ret = load_perms(env, target_perms_addr, &target_perms);
+    ret = riscv_load_perms(env, target_perms_addr, &target_perms);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -533,7 +532,7 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     /* Calculate and store new permissions for target SecDiv */
     target_perms |= perms | RT_V;
 
-    ret = store_perms(env, target_perms_addr, &target_perms);
+    ret = riscv_store_perms(env, target_perms_addr, &target_perms);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -542,7 +541,7 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     /* Drop permissions for source SecDiv */
     perms &= ~RT_PERMS;
 
-    ret = store_perms(env, source_perms_addr, (uint8_t *)&perms);
+    ret = riscv_store_perms(env, source_perms_addr, (uint8_t *)&perms);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -599,7 +598,7 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
                             + cell.idx;
 
         uint8_t current_perms;
-        ret = load_perms(env, perms_addr, &current_perms);
+        ret = riscv_load_perms(env, perms_addr, &current_perms);
         if (ret < 0) {
             /* Encountered an error => pass it on */
             return ret;
@@ -656,7 +655,7 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
     for (unsigned int i = 1; i < meta.M; i++) {
         perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * i) + cell.idx;
 
-        ret = load_perms(env, perms_addr, &perms);
+        ret = riscv_load_perms(env, perms_addr, &perms);
         if (ret < 0) {
             /* Encountered an error => pass it on */
             return ret;
@@ -671,7 +670,7 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
 
     /* Load the cell to invalidate */
     uint128_t cell_desc;
-    ret = load_cell(env, cell.paddr, &cell_desc);
+    ret = riscv_load_cell(env, cell.paddr, &cell_desc);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -680,7 +679,7 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
     /* Clear valid bit and write back cell description */
     cell_desc &= ~((uint128_t)RT_VAL_MASK << RT_VAL_SHIFT);
 
-    ret = store_cell(env, cell.paddr, &cell_desc);
+    ret = riscv_store_cell(env, cell.paddr, &cell_desc);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -690,7 +689,7 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
     for (unsigned int i = 0; i < meta.M; i++) {
         perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * i) + cell.idx;
 
-        ret = load_perms(env, perms_addr, &perms);
+        ret = riscv_load_perms(env, perms_addr, &perms);
         if (ret < 0) {
             /* Encountered an error => pass it on */
             return ret;
@@ -705,7 +704,7 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
             perms &= ~(RT_V | RT_PERMS);
         }
 
-        ret = store_perms(env, perms_addr, &perms);
+        ret = riscv_store_perms(env, perms_addr, &perms);
         if (ret < 0) {
             /* Encountered an error => pass it on */
             return ret;
@@ -754,7 +753,7 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
 
     /* Load cell to revalidate */
     uint128_t cell_desc;
-    ret = load_cell(env, cell.paddr, &cell_desc);
+    ret = riscv_load_cell(env, cell.paddr, &cell_desc);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -763,7 +762,7 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     /* Set valid bit and write back cell_description */
     cell_desc |= ((uint128_t)RT_VAL_MASK << RT_VAL_SHIFT);
 
-    ret = store_cell(env, cell.paddr, &cell_desc);
+    ret = riscv_store_cell(env, cell.paddr, &cell_desc);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -782,7 +781,7 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
                             + cell.idx;
 
         uint8_t old_perms, new_perms = 0;
-        ret = load_perms(env, perms_addr, &old_perms);
+        ret = riscv_load_perms(env, perms_addr, &old_perms);
         if (ret < 0) {
             /* Encountered an error => pass it on */
             return ret;
@@ -796,7 +795,7 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
             new_perms = old_perms | RT_V;
         }
 
-        ret = store_perms(env, perms_addr, &new_perms);
+        ret = riscv_store_perms(env, perms_addr, &new_perms);
         if (ret < 0) {
             /* Encountered an error => pass it on */
             return ret;

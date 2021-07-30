@@ -46,11 +46,18 @@ typedef struct cell_loc {
 
 
 /* Functions */
+bool valid_cell_validator(target_ulong vaddr, uint128_t cell, uint8_t perms);
+
+int riscv_load_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell);
+int riscv_store_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell);
+int riscv_load_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms);
+int riscv_store_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms);
 
 int riscv_get_sc_meta(CPURISCVState *env, sc_meta_t *meta);
 int riscv_find_cell_addr(CPURISCVState *env, sc_meta_t *meta, cell_loc_t *cell,
                          target_ulong vaddr,
                          bool (*validator)(target_ulong, uint128_t, uint8_t));
+
 int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms);
 int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
                 target_ulong perms);
