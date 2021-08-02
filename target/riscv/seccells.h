@@ -46,7 +46,28 @@ typedef struct cell_loc {
 
 
 /* Functions */
-bool valid_cell_validator(target_ulong vaddr, uint128_t cell, uint8_t perms);
+static inline bool is_valid_cell(uint128_t cell)
+{
+    uint8_t del_flag = (cell >> RT_DEL_SHIFT) & RT_DEL_MASK;
+    uint8_t val_flag = (cell >> RT_VAL_SHIFT) & RT_VAL_MASK;
+
+    bool not_deleted = (0 == del_flag);
+    bool valid = (0 != val_flag);
+
+    return not_deleted && valid;
+}
+
+/* Attention: is_invalid_cell != !is_valid_cell */
+static inline bool is_invalid_cell(uint128_t cell)
+{
+    uint8_t del_flag = (cell >> RT_DEL_SHIFT) & RT_DEL_MASK;
+    uint8_t val_flag = (cell >> RT_VAL_SHIFT) & RT_VAL_MASK;
+
+    bool not_deleted = (0 == del_flag);
+    bool invalid = (0 == val_flag);
+
+    return not_deleted && invalid;
+}
 
 int riscv_load_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell);
 int riscv_store_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell);
@@ -55,8 +76,7 @@ int riscv_store_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms);
 
 int riscv_get_sc_meta(CPURISCVState *env, sc_meta_t *meta);
 int riscv_find_cell_addr(CPURISCVState *env, sc_meta_t *meta, cell_loc_t *cell,
-                         target_ulong vaddr,
-                         bool (*validator)(target_ulong, uint128_t, uint8_t));
+                         target_ulong vaddr, int access_type);
 
 int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms);
 int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,

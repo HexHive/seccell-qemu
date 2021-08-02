@@ -25,71 +25,6 @@
 #include "exec/exec-all.h"
 
 /*
- * Validate that a cell adheres to the criterion required by, e.g., inval, grant
- * Criterion: not deleted, valid, given vaddr contained in cell, some perms
- */
-bool valid_cell_validator(target_ulong vaddr, uint128_t cell, uint8_t perms)
-{
-    uint8_t del_flag = (cell >> RT_DEL_SHIFT) & RT_DEL_MASK;
-    uint8_t val_flag = (cell >> RT_VAL_SHIFT) & RT_VAL_MASK;
-    target_ulong va_start = ((cell >> RT_VA_START_SHIFT)
-                                & RT_VA_MASK) << PGSHIFT;
-    target_ulong va_end = ((cell >> RT_VA_END_SHIFT)
-                                & RT_VA_MASK) << PGSHIFT;
-    target_ulong addr_vpn = (vaddr >> PGSHIFT) << PGSHIFT;
-
-    bool not_deleted = (0 == del_flag);
-    bool valid = (0 != val_flag);
-    bool vaddr_in_cell = ((addr_vpn >= va_start) && (addr_vpn <= va_end));
-    bool has_access = ((0 != (perms & RT_V)) && (0 != (perms & RT_PERMS)));
-
-    return not_deleted && valid && vaddr_in_cell && has_access;
-}
-
-/*
- * Validate that a cell adheres to the criterion required by reval
- * Criterion: not deleted, invalid, given vaddr contained in cell, no perms
- */
-static bool reval_validator(target_ulong vaddr, uint128_t cell, uint8_t perms)
-{
-    uint8_t del_flag = (cell >> RT_DEL_SHIFT) & RT_DEL_MASK;
-    uint8_t val_flag = (cell >> RT_VAL_SHIFT) & RT_VAL_MASK;
-    target_ulong va_start = ((cell >> RT_VA_START_SHIFT)
-                                & RT_VA_MASK) << PGSHIFT;
-    target_ulong va_end = ((cell >> RT_VA_END_SHIFT)
-                                & RT_VA_MASK) << PGSHIFT;
-    target_ulong addr_vpn = (vaddr >> PGSHIFT) << PGSHIFT;
-
-    bool not_deleted = (0 == del_flag);
-    bool invalid = (0 == val_flag);
-    bool vaddr_in_cell = ((addr_vpn >= va_start) && (addr_vpn <= va_end));
-    bool has_no_access = (0 == (perms & (RT_V | RT_PERMS)));
-
-    return not_deleted && invalid && vaddr_in_cell && has_no_access;
-}
-
-/*
- * Validate that a cell adheres to the criterion required by count
- * Criterion: not deleted, valid, given vaddr contained in cell
- */
-static bool count_validator(target_ulong vaddr, uint128_t cell, uint8_t perms)
-{
-    uint8_t del_flag = (cell >> RT_DEL_SHIFT) & RT_DEL_MASK;
-    uint8_t val_flag = (cell >> RT_VAL_SHIFT) & RT_VAL_MASK;
-    target_ulong va_start = ((cell >> RT_VA_START_SHIFT)
-                                & RT_VA_MASK) << PGSHIFT;
-    target_ulong va_end = ((cell >> RT_VA_END_SHIFT)
-                                & RT_VA_MASK) << PGSHIFT;
-    target_ulong addr_vpn = (vaddr >> PGSHIFT) << PGSHIFT;
-
-    bool not_deleted = (0 == del_flag);
-    bool valid = (0 != val_flag);
-    bool vaddr_in_cell = ((addr_vpn >= va_start) && (addr_vpn <= va_end));
-
-    return not_deleted && valid && vaddr_in_cell;
-}
-
-/*
  * Load a cell from the range table
  */
 int riscv_load_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell)
@@ -245,8 +180,7 @@ int riscv_get_sc_meta(CPURISCVState *env, sc_meta_t *meta)
  * the range table
  */
 int riscv_find_cell_addr(CPURISCVState *env, sc_meta_t *meta, cell_loc_t *cell,
-                         target_ulong vaddr,
-                         bool (*validator)(target_ulong, uint128_t, uint8_t))
+                         target_ulong vaddr, int access_type)
 {
     hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
 
@@ -254,16 +188,16 @@ int riscv_find_cell_addr(CPURISCVState *env, sc_meta_t *meta, cell_loc_t *cell,
     /* Remove sign-extended bits */
     vaddr &= (1ull << va_bits) - 1;
 
-    target_ulong usid = env->usid;
-    if (usid > (meta->M - 1)) {
-        /* Invalid / too high SecDiv ID */
-        return -RISCV_EXCP_ILLEGAL_INST;
-    }
+    size_t start_idx = 1;
+    size_t end_idx = meta->N;
 
-    /* Find the requested cell */
-    for (unsigned int i = 1; i < meta->N; i++) {
-        hwaddr cell_addr = rt_base + i * CELL_DESC_SZ;
-        hwaddr perm_addr = rt_base + (meta->S * 64) + (usid * meta->T * 64) + i;
+    /* Binary search for given vaddr */
+    while (start_idx < end_idx) {
+        /* Due to rounding towards zero, start_idx <= middle_idx < end_idx
+           The below assignments thus guarantee progress and eventually loop
+           termination */
+        size_t middle_idx = start_idx + ((end_idx - start_idx) / 2);
+        hwaddr cell_addr = rt_base + middle_idx * CELL_DESC_SZ;
 
         uint128_t cell_desc;
         int res = riscv_load_cell(env, cell_addr, &cell_desc);
@@ -272,26 +206,32 @@ int riscv_find_cell_addr(CPURISCVState *env, sc_meta_t *meta, cell_loc_t *cell,
             return res;
         }
 
-        uint8_t perms;
-        res = riscv_load_perms(env, perm_addr, &perms);
-        if (res < 0) {
-            /* Encountered an error => pass it on */
-            return res;
-        }
+        target_ulong vpn_start = (cell_desc >> RT_VA_START_SHIFT) & RT_VA_MASK;
+        target_ulong vpn_end = (cell_desc >> RT_VA_END_SHIFT) & RT_VA_MASK;
+        target_ulong addr_vpn = vaddr >> PGSHIFT;
 
-        if (!validator(vaddr, cell_desc, perms))
-        {
-            /* Cell doesn't have the desired properties/permissions */
-            continue;
+        if (addr_vpn > vpn_end) {
+            /* End address is lower => continue search after current cell */
+            start_idx = middle_idx + 1;
+        } else if (addr_vpn < vpn_start) {
+            /* Start address is higher => continue search before current cell */
+            end_idx = middle_idx;
+        } else {
+            /* Found the cell => end search */
+            cell->idx = middle_idx;
+            cell->paddr = cell_addr;
+            return 0;
         }
-
-        /* Found cell that we were looking for => return its address */
-        cell->paddr = cell_addr;
-        cell->idx = i;
-        return 0;
     }
-    /* Iterated through the whole list and couldn't find cell */
-    return -RISCV_EXCP_LOAD_PAGE_FAULT;
+
+    /* Searched the whole range table without finding the requested address */
+    switch (access_type) {
+        case MMU_DATA_LOAD: return -RISCV_EXCP_LOAD_PAGE_FAULT;
+        case MMU_DATA_STORE: return -RISCV_EXCP_STORE_PAGE_FAULT;
+        case MMU_INST_FETCH: return -RISCV_EXCP_INST_PAGE_FAULT;
+        /* Default case should never be reached */
+        default: return -RISCV_EXCP_ILLEGAL_INST;
+    }
 }
 
 
@@ -324,24 +264,35 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
         return ret;
     }
 
-    cell_loc_t cell;
-    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, valid_cell_validator);
-    if (ret < 0) {
-        /* Encountered an error => pass it on */
-        return ret;
-    }
-
-    /* Calculate the necessary addresses */
     target_ulong usid = env->usid;
     if (usid > (meta.M - 1)) {
         /* Invalid / too high SecDiv ID */
         return -RISCV_EXCP_ILLEGAL_INST;
     }
-    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
+
+    /* Retrieve the necessary addresses */
+    cell_loc_t cell;
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, MMU_DATA_LOAD);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    /* We already checked that we're on a 64bit machine when we arrive here,
+     * using SATP64_PPN without platform check is therefore safe */
+    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
     hwaddr source_perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * usid)
                                + cell.idx;
     hwaddr target_perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * target)
                                + cell.idx;
+
+    /* Load and check cell */
+    uint128_t cell_desc;
+    ret = riscv_load_cell(env, cell.paddr, &cell_desc);
+    if (ret < 0 || !is_valid_cell(cell_desc)) {
+        /* Could not get cell description or cell is not valid */
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
 
     /* Load and check current SecDiv permissions */
     uint8_t source_perms;
@@ -349,6 +300,11 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
+    }
+
+    if ((0 == (source_perms & RT_V)) || (0 == (source_perms & RT_PERMS))) {
+        /* Current SecDiv doesn't have access to the cell in question at all */
+        return -RISCV_EXCP_ILLEGAL_INST;
     }
 
     if ((perms | source_perms) != source_perms) {
@@ -411,22 +367,33 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
         return ret;
     }
 
-    cell_loc_t cell;
-    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, valid_cell_validator);
-    if (ret < 0) {
-        /* Encountered an error => pass it on */
-        return ret;
-    }
-
-    /* Calculate the necessary address */
     target_ulong usid = env->usid;
     if (usid > (meta.M - 1)) {
         /* Invalid / too high SecDiv ID */
         return -RISCV_EXCP_ILLEGAL_INST;
     }
-    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
+
+    /* Retrieve the necessary addresses */
+    cell_loc_t cell;
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, MMU_DATA_LOAD);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    /* We already checked that we're on a 64bit machine when we arrive here,
+     * using SATP64_PPN without platform check is therefore safe */
+    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
     hwaddr perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * usid)
                         + cell.idx;
+
+    /* Load and check cell */
+    uint128_t cell_desc;
+    ret = riscv_load_cell(env, cell.paddr, &cell_desc);
+    if (ret < 0 || !is_valid_cell(cell_desc)) {
+        /* Could not get cell description or cell is not valid */
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
 
     /* Load and check current SecDiv permissions */
     uint8_t current_perms;
@@ -434,6 +401,11 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
+    }
+
+    if ((0 == (current_perms & RT_V)) || (0 == (current_perms & RT_PERMS))) {
+        /* Current SecDiv doesn't have access to the cell in question at all */
+        return -RISCV_EXCP_ILLEGAL_INST;
     }
 
     if ((perms | current_perms) != current_perms) {
@@ -484,24 +456,35 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
         return ret;
     }
 
-    cell_loc_t cell;
-    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, valid_cell_validator);
-    if (ret < 0) {
-        /* Encountered an error => pass it on */
-        return ret;
-    }
-
-    /* Calculate the necessary addresses */
     target_ulong usid = env->usid;
     if (usid > (meta.M - 1)) {
         /* Invalid / too high SecDiv ID */
         return -RISCV_EXCP_ILLEGAL_INST;
     }
-    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
+
+    /* Retrieve the necessary addresses */
+    cell_loc_t cell;
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, MMU_DATA_LOAD);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    /* We already checked that we're on a 64bit machine when we arrive here,
+     * using SATP64_PPN without platform check is therefore safe */
+    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
     hwaddr source_perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * usid)
                                + cell.idx;
     hwaddr target_perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * target)
                                + cell.idx;
+
+    /* Load and check cell */
+    uint128_t cell_desc;
+    ret = riscv_load_cell(env, cell.paddr, &cell_desc);
+    if (ret < 0 || !is_valid_cell(cell_desc)) {
+        /* Could not get cell description or cell is not valid */
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
 
     /* Load and check current SecDiv permissions */
     uint8_t source_perms;
@@ -509,6 +492,11 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
+    }
+
+    if ((0 == (source_perms & RT_V)) || (0 == (source_perms & RT_PERMS))) {
+        /* Current SecDiv doesn't have access to the cell in question at all */
+        return -RISCV_EXCP_ILLEGAL_INST;
     }
 
     if ((perms | source_perms) != source_perms) {
@@ -582,10 +570,18 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
     }
 
     cell_loc_t cell;
-    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, count_validator);
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, MMU_DATA_LOAD);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
+    }
+
+    /* Load and check cell */
+    uint128_t cell_desc;
+    ret = riscv_load_cell(env, cell.paddr, &cell_desc);
+    if (ret < 0 || !is_valid_cell(cell_desc)) {
+        /* Could not get cell description or cell is not valid */
+        return -RISCV_EXCP_ILLEGAL_INST;
     }
 
     *dest = 0;
@@ -636,21 +632,47 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
         return ret;
     }
 
-    cell_loc_t cell;
-    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, valid_cell_validator);
-    if (ret < 0) {
-        /* Encountered an error => pass it on */
-        return ret;
-    }
-
-    hwaddr perms_addr;
-    uint8_t perms;
     target_ulong usid = env->usid;
     if (usid > (meta.M - 1)) {
         /* Invalid / too high SecDiv ID */
         return -RISCV_EXCP_ILLEGAL_INST;
     }
-    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
+
+    /* Retrieve the necessary addresses */
+    cell_loc_t cell;
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, MMU_DATA_LOAD);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    /* We already checked that we're on a 64bit machine when we arrive here,
+     * using SATP64_PPN without platform check is therefore safe */
+    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
+    hwaddr perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * usid)
+                        + cell.idx;
+
+    /* Load and check the cell to invalidate */
+    uint128_t cell_desc;
+    ret = riscv_load_cell(env, cell.paddr, &cell_desc);
+    if (ret < 0 || !is_valid_cell(cell_desc)) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    /* Load and check current SecDiv permissions */
+    uint8_t perms;
+    ret = riscv_load_perms(env, perms_addr, &perms);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    if ((0 == (perms & RT_V)) || (0 == (perms & RT_PERMS))) {
+        /* Current SecDiv doesn't have access to the cell in question at all */
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
     /* Make sure that nobody else has permissions on this cell */
     for (unsigned int i = 1; i < meta.M; i++) {
         perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * i) + cell.idx;
@@ -666,14 +688,6 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
             return -RISCV_EXCP_ILLEGAL_INST;
         }
 
-    }
-
-    /* Load the cell to invalidate */
-    uint128_t cell_desc;
-    ret = riscv_load_cell(env, cell.paddr, &cell_desc);
-    if (ret < 0) {
-        /* Encountered an error => pass it on */
-        return ret;
     }
 
     /* Clear valid bit and write back cell description */
@@ -744,19 +758,30 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
         return ret;
     }
 
+    target_ulong usid = env->usid;
+    if (usid > (meta.M - 1)) {
+        /* Invalid / too high SecDiv ID */
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    /* Retrieve the necessary addresses */
     cell_loc_t cell;
-    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, reval_validator);
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, MMU_DATA_LOAD);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
     }
 
-    /* Load cell to revalidate */
+    /* We already checked that we're on a 64bit machine when we arrive here,
+     * using SATP64_PPN without platform check is therefore safe */
+    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
+
+    /* Load and check cell to revalidate */
     uint128_t cell_desc;
     ret = riscv_load_cell(env, cell.paddr, &cell_desc);
-    if (ret < 0) {
-        /* Encountered an error => pass it on */
-        return ret;
+    if (ret < 0 || !is_invalid_cell(cell_desc)) {
+        /* Could not get cell description or cell is not invalid */
+        return -RISCV_EXCP_ILLEGAL_INST;
     }
 
     /* Set valid bit and write back cell_description */
@@ -767,13 +792,6 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
         /* Encountered an error => pass it on */
         return ret;
     }
-
-    target_ulong usid = env->usid;
-    if (usid > (meta.M - 1)) {
-        /* Invalid / too high SecDiv ID */
-        return -RISCV_EXCP_ILLEGAL_INST;
-    }
-    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
 
     /* Read, update and write back permissions */
     for (unsigned int i = 0; i < meta.M; i++) {

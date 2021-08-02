@@ -558,10 +558,17 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
         }
 
         cell_loc_t cell;
-        err = riscv_find_cell_addr(env, &meta, &cell, addr,
-                                   valid_cell_validator);
+        err = riscv_find_cell_addr(env, &meta, &cell, addr, access_type);
         if (err < 0) {
             /* Could not find a valid cell with the requested virtual address */
+            return TRANSLATE_FAIL;
+        }
+
+
+        uint128_t cell_desc;
+        err = riscv_load_cell(env, cell.paddr, &cell_desc);
+        if (err < 0 || !is_valid_cell(cell_desc)) {
+            /* Could not get cell description or cell is not valid */
             return TRANSLATE_FAIL;
         }
 
@@ -575,9 +582,10 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
             return TRANSLATE_FAIL;
         }
 
-        /* No need to check whether there are permissions at all => already done
-           when searching for the cell in the range table */
-        if ((perms & (RT_R | RT_W | RT_X)) == RT_W)
+        if (!(perms & RT_V)) {
+            /* Cell not valid for current SecDiv */
+            return TRANSLATE_FAIL;
+        } else if ((perms & (RT_R | RT_W | RT_X)) == RT_W)
             /* riscv: Write without read not allowed */
             return TRANSLATE_FAIL;
         else if ((perms & (RT_R | RT_W | RT_X)) == (RT_W | RT_X))
@@ -616,13 +624,6 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
                     * PTE is in IO space and can't be updated atomically */
                     return TRANSLATE_FAIL;
                 }
-            }
-
-            uint128_t cell_desc;
-            err = riscv_load_cell(env, cell.paddr, &cell_desc);
-            if (err < 0) {
-                /* Could not get cell description */
-                return TRANSLATE_FAIL;
             }
 
             /* All checks pass, return the physical address */
