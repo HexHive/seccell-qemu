@@ -214,10 +214,20 @@ target_ulong helper_sret(CPURISCVState *env, target_ulong cpu_pc_deb)
     }
 
     /* sret shouldn't return to asid 0 */
-    if(env->urid == 0)
-        riscv_raise_exception(env, RISCV_EXCP_INST_PAGE_FAULT, retpc);
-    env->usid = env->urid;
-    env->urid = 0;
+    uint64_t satp_mode;
+    if (riscv_cpu_mxl(env) == MXL_RV32) {
+        satp_mode = SATP32_MODE;
+    } else {
+        satp_mode = SATP64_MODE;
+    }
+    int vm = get_field(env->satp, satp_mode);
+
+    if(vm == VM_SECCELL) {
+        // if(env->urid == 0)
+        //     riscv_raise_exception(env, RISCV_EXCP_INST_PAGE_FAULT, retpc);
+        env->usid = env->urid; 
+        env->urid = 0;
+    }
 
     riscv_cpu_set_mode(env, prev_priv);
 
