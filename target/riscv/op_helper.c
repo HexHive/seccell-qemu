@@ -223,8 +223,9 @@ target_ulong helper_sret(CPURISCVState *env, target_ulong cpu_pc_deb)
     int vm = get_field(env->satp, satp_mode);
 
     if(vm == VM_SECCELL) {
-        // if(env->urid == 0)
-        //     riscv_raise_exception(env, RISCV_EXCP_INST_PAGE_FAULT, retpc);
+        /* Should not return to userspace with URID set to 0 */
+        if((env->urid == RT_ID_SUPERVISOR) && (prev_priv == PRV_U))
+            riscv_raise_exception(env, RISCV_EXCP_INST_PAGE_FAULT, retpc);
         env->usid = env->urid; 
         env->urid = 0;
     }
