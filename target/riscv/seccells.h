@@ -48,25 +48,15 @@ typedef struct cell_loc {
 /* Functions */
 static inline bool is_valid_cell(uint128_t cell)
 {
-    uint8_t del_flag = (cell >> RT_DEL_SHIFT) & RT_DEL_MASK;
     uint8_t val_flag = (cell >> RT_VAL_SHIFT) & RT_VAL_MASK;
-
-    bool not_deleted = (0 == del_flag);
-    bool valid = (0 != val_flag);
-
-    return not_deleted && valid;
+    return (0 != val_flag);
 }
 
 /* Attention: is_invalid_cell != !is_valid_cell */
 static inline bool is_invalid_cell(uint128_t cell)
 {
-    uint8_t del_flag = (cell >> RT_DEL_SHIFT) & RT_DEL_MASK;
     uint8_t val_flag = (cell >> RT_VAL_SHIFT) & RT_VAL_MASK;
-
-    bool not_deleted = (0 == del_flag);
-    bool invalid = (0 == val_flag);
-
-    return not_deleted && invalid;
+    return (0 == val_flag);
 }
 
 int riscv_load_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell);

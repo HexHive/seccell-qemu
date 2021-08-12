@@ -472,8 +472,7 @@ typedef enum {
 #define RT_VA_START_SHIFT 0            // in 128-bit cell desc
 #define RT_VA_END_SHIFT   36           // in 128-bit cell desc
 #define RT_PA_SHIFT       72           // in 128-bit cell desc
-#define RT_DEL_SHIFT      127          // in 128-bit cell desc
-#define RT_VAL_SHIFT      126          // in 128-bit cell desc
+#define RT_VAL_SHIFT      127          // in 128-bit cell desc
 #define RT_META_N_SHIFT   96           // in 128-bit metacell desc
 #define RT_META_M_SHIFT   64           // in 128-bit metacell desc
 #define RT_META_T_SHIFT   32           // in 128-bit metacell desc
@@ -487,7 +486,6 @@ typedef enum {
 /* Masks */
 #define RT_VA_MASK        ((1ull << RT_VFN_SIZE) - 1) // 36 bits of VA
 #define RT_PA_MASK        ((1ull << RT_PFN_SIZE) - 1) // 44 bits of PA
-#define RT_DEL_MASK       1ull // 1 bit for deleted marker
 #define RT_VAL_MASK       1ull // 1 bit for valid marker
 #define RT_META_N_MASK    ((1ull << RT_META_N_SIZE) - 1) // 32 bits for number of cells
 #define RT_META_M_MASK    ((1ull << RT_META_M_SIZE) - 1) // 32 bits for number of SecDivs
