@@ -1222,6 +1222,7 @@ void riscv_cpu_do_interrupt(CPUState *cs)
         env->htval = htval;
         env->pc = (env->stvec >> 2 << 2) +
             ((async && (env->stvec & 3) == 1) ? cause * 4 : 0);
+        env->uxid = env->urid;
         env->urid = env->usid;
         env->usid = 0;
         riscv_cpu_set_mode(env, PRV_S);

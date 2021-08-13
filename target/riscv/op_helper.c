@@ -226,8 +226,9 @@ target_ulong helper_sret(CPURISCVState *env, target_ulong cpu_pc_deb)
         /* Should not return to userspace with URID set to 0 */
         if((env->urid == RT_ID_SUPERVISOR) && (prev_priv == PRV_U))
             riscv_raise_exception(env, RISCV_EXCP_INST_PAGE_FAULT, retpc);
-        env->usid = env->urid; 
-        env->urid = 0;
+        env->usid = env->urid;
+        env->urid = env->uxid;
+        env->uxid = 0;
     }
 
     riscv_cpu_set_mode(env, prev_priv);

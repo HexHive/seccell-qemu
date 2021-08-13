@@ -169,6 +169,7 @@ struct CPURISCVState {
     target_ulong stval;
     target_ulong usid;   /* seccell */
     target_ulong urid;   /* seccell */
+    target_ulong uxid;  /* seccell */
     target_ulong sbadaddr;
     target_ulong mbadaddr;
     target_ulong medeleg;

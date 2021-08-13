@@ -180,6 +180,7 @@
 #define CSR_SATP            0x180
 #define CSR_USID            0x82
 #define CSR_URID            0x83
+#define CSR_UXID            0x84
 
 /* Hpervisor CSRs */
 #define CSR_HSTATUS         0x600

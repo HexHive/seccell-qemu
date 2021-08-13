@@ -196,6 +196,7 @@ const VMStateDescription vmstate_riscv_cpu = {
         VMSTATE_UINTTL(env.satp, RISCVCPU),
         VMSTATE_UINTTL(env.stval, RISCVCPU),
         VMSTATE_UINTTL(env.urid, RISCVCPU),
+        VMSTATE_UINTTL(env.uxid, RISCVCPU),
         VMSTATE_UINTTL(env.usid, RISCVCPU),
         VMSTATE_UINTTL(env.sbadaddr, RISCVCPU),
         VMSTATE_UINTTL(env.mbadaddr, RISCVCPU),
