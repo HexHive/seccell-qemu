@@ -557,8 +557,9 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
-    /* The permissions parameter is only allowed to have the RWX bits set */
-    if (0 != (perms & ~RT_PERMS)) {
+    /* The permissions parameter is only allowed to have the RWX bits set,
+     * Perms cannot be zero */
+    if ((0 != (perms & ~RT_PERMS)) || !perms) {
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
