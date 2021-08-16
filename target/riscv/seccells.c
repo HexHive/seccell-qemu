@@ -804,7 +804,7 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
         /* Encountered an error => pass it on */
         return ret;
     }
-    if (!is_invalid_cell(cell_desc)) {
+    if (is_valid_cell(cell_desc)) {
         /* Cell is already valid */
         return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }

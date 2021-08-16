@@ -52,13 +52,6 @@ static inline bool is_valid_cell(uint128_t cell)
     return (0 != val_flag);
 }
 
-/* Attention: is_invalid_cell != !is_valid_cell */
-static inline bool is_invalid_cell(uint128_t cell)
-{
-    uint8_t val_flag = (cell >> RT_VAL_SHIFT) & RT_VAL_MASK;
-    return (0 == val_flag);
-}
-
 int riscv_load_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell);
 int riscv_store_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell);
 int riscv_load_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms);
