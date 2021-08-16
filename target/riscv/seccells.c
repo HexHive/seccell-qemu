@@ -180,9 +180,11 @@ int riscv_get_sc_meta(CPURISCVState *env, sc_meta_t *meta)
  * the range table
  */
 int riscv_find_cell_addr(CPURISCVState *env, sc_meta_t *meta, cell_loc_t *cell,
-                         target_ulong vaddr, int access_type)
+                         target_ulong vaddr)
 {
-    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP_PPN) << PGSHIFT;
+    /* We already checked that we're on a 64bit machine when we arrive here,
+     * using SATP64_PPN without platform check is therefore safe */
+    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
 
     int va_bits = RT_VFN_SIZE + PGSHIFT;
     /* Remove sign-extended bits */
@@ -225,13 +227,7 @@ int riscv_find_cell_addr(CPURISCVState *env, sc_meta_t *meta, cell_loc_t *cell,
     }
 
     /* Searched the whole range table without finding the requested address */
-    switch (access_type) {
-        case MMU_DATA_LOAD: return -RISCV_EXCP_LOAD_PAGE_FAULT;
-        case MMU_DATA_STORE: return -RISCV_EXCP_STORE_PAGE_FAULT;
-        case MMU_INST_FETCH: return -RISCV_EXCP_INST_PAGE_FAULT;
-        /* Default case should never be reached */
-        default: return -RISCV_EXCP_ILLEGAL_INST;
-    }
+    return -RISCV_EXCP_SECCELL_ILL_ADDR;
 }
 
 
@@ -252,9 +248,10 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
-    /* The permissions parameter is only allowed to have the RWX bits set */
-    if (0 != (perms & ~RT_PERMS)) {
-        return -RISCV_EXCP_ILLEGAL_INST;
+    /* The permissions parameter is only allowed to have the RWX bits set,
+     * perms cannot be zero */
+    if ((0 != (perms & ~RT_PERMS)) || !perms) {
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     sc_meta_t meta;
@@ -267,12 +264,12 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     target_ulong usid = env->usid;
     if (usid > (meta.M - 1)) {
         /* Invalid / too high SecDiv ID */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_INV_SDID;
     }
 
     /* Retrieve the necessary addresses */
     cell_loc_t cell;
-    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, MMU_DATA_LOAD);
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -289,9 +286,13 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     /* Load and check cell */
     uint128_t cell_desc;
     ret = riscv_load_cell(env, cell.paddr, &cell_desc);
-    if (ret < 0 || !is_valid_cell(cell_desc)) {
-        /* Could not get cell description or cell is not valid */
-        return -RISCV_EXCP_ILLEGAL_INST;
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+    if (!is_valid_cell(cell_desc)) {
+        /* Cell is invalid */
+        return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
     /* Load and check current SecDiv permissions */
@@ -304,12 +305,12 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
 
     if ((0 == (source_perms & RT_V)) || (0 == (source_perms & RT_PERMS))) {
         /* Current SecDiv doesn't have access to the cell in question at all */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     if ((perms | source_perms) != source_perms) {
         /* Provided permissions are not a subset of the current permissions */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     /* Load and check target SecDiv permissions */
@@ -322,7 +323,7 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
 
     if (0 != (perms & target_perms)) {
         /* Current perms already contain at least parts of the new perms */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     /* Calculate and store new permissions for target SecDiv */
@@ -355,9 +356,10 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
-    /* The permissions parameter is only allowed to have the RWX bits set */
+    /* The permissions parameter is only allowed to have the RWX bits set,
+       perms can be explicitly 0 do drop all permissions */
     if (0 != (perms & ~RT_PERMS)) {
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     sc_meta_t meta;
@@ -370,12 +372,12 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     target_ulong usid = env->usid;
     if (usid > (meta.M - 1)) {
         /* Invalid / too high SecDiv ID */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_INV_SDID;
     }
 
     /* Retrieve the necessary addresses */
     cell_loc_t cell;
-    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, MMU_DATA_LOAD);
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -390,9 +392,13 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     /* Load and check cell */
     uint128_t cell_desc;
     ret = riscv_load_cell(env, cell.paddr, &cell_desc);
-    if (ret < 0 || !is_valid_cell(cell_desc)) {
-        /* Could not get cell description or cell is not valid */
-        return -RISCV_EXCP_ILLEGAL_INST;
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+    if (!is_valid_cell(cell_desc)) {
+        /* Cell is invalid */
+        return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
     /* Load and check current SecDiv permissions */
@@ -405,12 +411,12 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
 
     if ((0 == (current_perms & RT_V)) || (0 == (current_perms & RT_PERMS))) {
         /* Current SecDiv doesn't have access to the cell in question at all */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     if ((perms | current_perms) != current_perms) {
         /* Provided permissions are not a subset of the current permissions */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     /* Calculate and store new permissions for SecDiv */
@@ -444,9 +450,10 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
-    /* The permissions parameter is only allowed to have the RWX bits set */
-    if (0 != (perms & ~RT_PERMS)) {
-        return -RISCV_EXCP_ILLEGAL_INST;
+    /* The permissions parameter is only allowed to have the RWX bits set,
+     * perms cannot be zero */
+    if ((0 != (perms & ~RT_PERMS)) || !perms) {
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     sc_meta_t meta;
@@ -459,12 +466,12 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     target_ulong usid = env->usid;
     if (usid > (meta.M - 1)) {
         /* Invalid / too high SecDiv ID */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_INV_SDID;
     }
 
     /* Retrieve the necessary addresses */
     cell_loc_t cell;
-    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, MMU_DATA_LOAD);
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -481,9 +488,13 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     /* Load and check cell */
     uint128_t cell_desc;
     ret = riscv_load_cell(env, cell.paddr, &cell_desc);
-    if (ret < 0 || !is_valid_cell(cell_desc)) {
-        /* Could not get cell description or cell is not valid */
-        return -RISCV_EXCP_ILLEGAL_INST;
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+    if (!is_valid_cell(cell_desc)) {
+        /* Cell is invalid */
+        return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
     /* Load and check current SecDiv permissions */
@@ -496,12 +507,12 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
 
     if ((0 == (source_perms & RT_V)) || (0 == (source_perms & RT_PERMS))) {
         /* Current SecDiv doesn't have access to the cell in question at all */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     if ((perms | source_perms) != source_perms) {
         /* Provided permissions are not a subset of the current permissions */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     /* Load and check target SecDiv permissions */
@@ -514,7 +525,7 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
 
     if (0 != (perms & target_perms)) {
         /* Current perms already contain at least parts of the new perms */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     /* Calculate and store new permissions for target SecDiv */
@@ -558,9 +569,9 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
     }
 
     /* The permissions parameter is only allowed to have the RWX bits set,
-     * Perms cannot be zero */
+     * perms cannot be zero */
     if ((0 != (perms & ~RT_PERMS)) || !perms) {
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     sc_meta_t meta;
@@ -571,7 +582,7 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
     }
 
     cell_loc_t cell;
-    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, MMU_DATA_LOAD);
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -580,9 +591,13 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
     /* Load and check cell */
     uint128_t cell_desc;
     ret = riscv_load_cell(env, cell.paddr, &cell_desc);
-    if (ret < 0 || !is_valid_cell(cell_desc)) {
-        /* Could not get cell description or cell is not valid */
-        return -RISCV_EXCP_ILLEGAL_INST;
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+    if (!is_valid_cell(cell_desc)) {
+        /* Cell is invalid */
+        return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
     *dest = 0;
@@ -636,12 +651,12 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
     target_ulong usid = env->usid;
     if (usid > (meta.M - 1)) {
         /* Invalid / too high SecDiv ID */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_INV_SDID;
     }
 
     /* Retrieve the necessary addresses */
     cell_loc_t cell;
-    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, MMU_DATA_LOAD);
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -656,9 +671,13 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
     /* Load and check the cell to invalidate */
     uint128_t cell_desc;
     ret = riscv_load_cell(env, cell.paddr, &cell_desc);
-    if (ret < 0 || !is_valid_cell(cell_desc)) {
+    if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
+    }
+    if (!is_valid_cell(cell_desc)) {
+        /* Cell is invalid */
+        return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
     /* Load and check current SecDiv permissions */
@@ -671,7 +690,7 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
 
     if ((0 == (perms & RT_V)) || (0 == (perms & RT_PERMS))) {
         /* Current SecDiv doesn't have access to the cell in question at all */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     /* Make sure that nobody else has permissions on this cell */
@@ -686,7 +705,7 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
 
         if ((i != usid) && ((perms & RT_V) != 0) && ((perms & RT_PERMS) != 0)) {
             /* Some other SecDiv still has access => error out */
-            return -RISCV_EXCP_ILLEGAL_INST;
+            return -RISCV_EXCP_SECCELL_ILL_PERM;
         }
 
     }
@@ -747,9 +766,10 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
         return -RISCV_EXCP_ILLEGAL_INST;
     }
 
-    /* The permissions parameter is only allowed to have the RWX bits set */
-    if (0 != (perms & ~RT_PERMS)) {
-        return -RISCV_EXCP_ILLEGAL_INST;
+    /* The permissions parameter is only allowed to have the RWX bits set,
+     * perms cannot be zero */
+    if ((0 != (perms & ~RT_PERMS)) || !perms) {
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     sc_meta_t meta;
@@ -762,12 +782,12 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     target_ulong usid = env->usid;
     if (usid > (meta.M - 1)) {
         /* Invalid / too high SecDiv ID */
-        return -RISCV_EXCP_ILLEGAL_INST;
+        return -RISCV_EXCP_SECCELL_INV_SDID;
     }
 
     /* Retrieve the necessary addresses */
     cell_loc_t cell;
-    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr, MMU_DATA_LOAD);
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -780,9 +800,13 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     /* Load and check cell to revalidate */
     uint128_t cell_desc;
     ret = riscv_load_cell(env, cell.paddr, &cell_desc);
-    if (ret < 0 || !is_invalid_cell(cell_desc)) {
-        /* Could not get cell description or cell is not invalid */
-        return -RISCV_EXCP_ILLEGAL_INST;
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+    if (!is_invalid_cell(cell_desc)) {
+        /* Cell is already valid */
+        return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
     /* Set valid bit and write back cell_description */

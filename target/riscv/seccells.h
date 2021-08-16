@@ -66,7 +66,7 @@ int riscv_store_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms);
 
 int riscv_get_sc_meta(CPURISCVState *env, sc_meta_t *meta);
 int riscv_find_cell_addr(CPURISCVState *env, sc_meta_t *meta, cell_loc_t *cell,
-                         target_ulong vaddr, int access_type);
+                         target_ulong vaddr);
 
 int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms);
 int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,

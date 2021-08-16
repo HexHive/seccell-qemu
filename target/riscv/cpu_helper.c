@@ -558,7 +558,7 @@ static int get_physical_address(CPURISCVState *env, hwaddr *physical,
         }
 
         cell_loc_t cell;
-        err = riscv_find_cell_addr(env, &meta, &cell, addr, access_type);
+        err = riscv_find_cell_addr(env, &meta, &cell, addr);
         if (err < 0) {
             /* Could not find a valid cell with the requested virtual address */
             return TRANSLATE_FAIL;
