@@ -227,6 +227,7 @@ int riscv_find_cell_addr(CPURISCVState *env, sc_meta_t *meta, cell_loc_t *cell,
     }
 
     /* Searched the whole range table without finding the requested address */
+    env->badaddr = vaddr;
     return -RISCV_EXCP_SECCELL_ILL_ADDR;
 }
 
@@ -571,6 +572,7 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
     /* The permissions parameter is only allowed to have the RWX bits set,
      * perms cannot be zero */
     if ((0 != (perms & ~RT_PERMS)) || !perms) {
+        env->badaddr = (((perms)? 0:1) << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
