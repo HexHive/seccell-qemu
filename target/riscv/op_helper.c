@@ -75,7 +75,7 @@ void helper_jals(CPURISCVState *env, target_ulong secdiv)
     if (0 == secdiv) {
         /* Disallow switching to supervisor SecDiv => only enter supervisor
            SecDiv through traps into supervisor mode */
-        riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+        riscv_raise_exception(env, RISCV_EXCP_SECCELL_INV_SDID, GETPC());
     }
     /* Set URID to USID, USID to new secdiv */
     env->urid = env->usid;
@@ -84,11 +84,13 @@ void helper_jals(CPURISCVState *env, target_ulong secdiv)
 
 void helper_jalrs(CPURISCVState *env, target_ulong pc, target_ulong secdiv)
 {
-    if (cpu_ldl_code(env, pc) != 0x0000200b || 0 == secdiv) {
-        /* Next instruction is not an entry instruction as expected or user
-           tries to switch to supervisor SecDiv without trapping into supervisor
-           mode */
-        riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+    if (cpu_ldl_code(env, pc) != 0x0000200b) {
+        /* Next instruction is not an entry instruction as expected */
+        riscv_raise_exception(env, RISCV_EXCP_SECCELL_ILL_TGT, GETPC());
+    } else if (0 == secdiv) {
+        /* User tries to switch to supervisor SecDiv without trapping into
+           supervisor mode */
+        riscv_raise_exception(env, RISCV_EXCP_SECCELL_INV_SDID, GETPC());
     } else {
         /* Next instruction is valid entry instruction => switch SecDiv */
         env->urid = env->usid;
@@ -213,7 +215,6 @@ target_ulong helper_sret(CPURISCVState *env, target_ulong cpu_pc_deb)
         env->mstatus = mstatus;
     }
 
-    /* sret shouldn't return to asid 0 */
     uint64_t satp_mode;
     if (riscv_cpu_mxl(env) == MXL_RV32) {
         satp_mode = SATP32_MODE;
@@ -224,8 +225,9 @@ target_ulong helper_sret(CPURISCVState *env, target_ulong cpu_pc_deb)
 
     if(vm == VM_SECCELL) {
         /* Should not return to userspace with URID set to 0 */
-        if((env->urid == RT_ID_SUPERVISOR) && (prev_priv == PRV_U))
-            riscv_raise_exception(env, RISCV_EXCP_INST_PAGE_FAULT, retpc);
+        if ((env->urid == RT_ID_SUPERVISOR) && (prev_priv == PRV_U)) {
+            riscv_raise_exception(env, RISCV_EXCP_SECCELL_INV_SDID, retpc);
+        }
         env->usid = env->urid;
         env->urid = env->uxid;
         env->uxid = 0;

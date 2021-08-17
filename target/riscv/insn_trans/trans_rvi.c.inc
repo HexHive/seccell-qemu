@@ -594,7 +594,7 @@ static bool trans_jals(DisasContext *ctx, arg_jals *a)
     /* Check next instruction is entry */
     uint32_t next_insn = opcode_at(&ctx->base, next_pc);
     if (next_insn != 0x0000200b) {
-        gen_exception_illegal(ctx);
+        generate_exception(ctx, RISCV_EXCP_SECCELL_ILL_TGT);
         return true;
     }
 
