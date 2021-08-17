@@ -262,8 +262,8 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
 
     target_ulong usid = env->usid;
-    if (usid > (meta.M - 1)) {
-        /* Invalid / too high SecDiv ID */
+    if ((usid > (meta.M - 1)) || (target > (meta.M - 1))) {
+        /* Invalid / too high caller or target SecDiv ID */
         return -RISCV_EXCP_SECCELL_INV_SDID;
     }
 
@@ -464,8 +464,8 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
 
     target_ulong usid = env->usid;
-    if (usid > (meta.M - 1)) {
-        /* Invalid / too high SecDiv ID */
+    if ((usid > (meta.M - 1)) || (target > (meta.M - 1))) {
+        /* Invalid / too high caller or target SecDiv ID */
         return -RISCV_EXCP_SECCELL_INV_SDID;
     }
 

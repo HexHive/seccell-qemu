@@ -72,9 +72,16 @@ target_ulong helper_csrrw(CPURISCVState *env, int csr,
 
 void helper_jals(CPURISCVState *env, target_ulong secdiv)
 {
-    if (0 == secdiv) {
-        /* Disallow switching to supervisor SecDiv => only enter supervisor
-           SecDiv through traps into supervisor mode */
+    /* Get metacell contents for target validity check */
+    sc_meta_t meta;
+    int ret = riscv_get_sc_meta(env, &meta);
+    if (ret < 0) {
+        riscv_raise_exception(env, -ret, GETPC());
+    }
+
+    if ((0 == secdiv) || (secdiv > (meta.M - 1))) {
+        /* User tries to switch to supervisor SecDiv without trapping into
+           supervisor mode or to switch to invalid SecDiv */
         riscv_raise_exception(env, RISCV_EXCP_SECCELL_INV_SDID, GETPC());
     }
     /* Set URID to USID, USID to new secdiv */
@@ -84,12 +91,19 @@ void helper_jals(CPURISCVState *env, target_ulong secdiv)
 
 void helper_jalrs(CPURISCVState *env, target_ulong pc, target_ulong secdiv)
 {
+    /* Get metacell contents for target validity check */
+    sc_meta_t meta;
+    int ret = riscv_get_sc_meta(env, &meta);
+    if (ret < 0) {
+        riscv_raise_exception(env, -ret, GETPC());
+    }
+
     if (cpu_ldl_code(env, pc) != 0x0000200b) {
         /* Next instruction is not an entry instruction as expected */
         riscv_raise_exception(env, RISCV_EXCP_SECCELL_ILL_TGT, GETPC());
-    } else if (0 == secdiv) {
+    } else if ((0 == secdiv) || (secdiv > (meta.M - 1))) {
         /* User tries to switch to supervisor SecDiv without trapping into
-           supervisor mode */
+           supervisor mode or to switch to invalid SecDiv */
         riscv_raise_exception(env, RISCV_EXCP_SECCELL_INV_SDID, GETPC());
     } else {
         /* Next instruction is valid entry instruction => switch SecDiv */
