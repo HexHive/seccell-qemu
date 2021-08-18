@@ -70,7 +70,7 @@ target_ulong helper_csrrw(CPURISCVState *env, int csr,
     return val;
 }
 
-void helper_jals(CPURISCVState *env, target_ulong secdiv)
+void helper_jals(CPURISCVState *env, target_ulong pc, target_ulong secdiv)
 {
     /* Get metacell contents for target validity check */
     sc_meta_t meta;
@@ -79,9 +79,14 @@ void helper_jals(CPURISCVState *env, target_ulong secdiv)
         riscv_raise_exception(env, -ret, GETPC());
     }
 
-    if ((0 == secdiv) || (secdiv > (meta.M - 1))) {
+    if (cpu_ldl_code(env, pc) != 0x0000200b) {
+        env->badaddr = pc;
+        /* Next instruction is not an entry instruction as expected */
+        riscv_raise_exception(env, RISCV_EXCP_SECCELL_ILL_TGT, GETPC());
+    } else if ((0 == secdiv) || (secdiv > (meta.M - 1))) {
         /* User tries to switch to supervisor SecDiv without trapping into
            supervisor mode or to switch to invalid SecDiv */
+        env->badaddr = secdiv;
         riscv_raise_exception(env, RISCV_EXCP_SECCELL_INV_SDID, GETPC());
     }
     /* Set URID to USID, USID to new secdiv */
@@ -99,11 +104,13 @@ void helper_jalrs(CPURISCVState *env, target_ulong pc, target_ulong secdiv)
     }
 
     if (cpu_ldl_code(env, pc) != 0x0000200b) {
+        env->badaddr = pc;
         /* Next instruction is not an entry instruction as expected */
         riscv_raise_exception(env, RISCV_EXCP_SECCELL_ILL_TGT, GETPC());
     } else if ((0 == secdiv) || (secdiv > (meta.M - 1))) {
         /* User tries to switch to supervisor SecDiv without trapping into
            supervisor mode or to switch to invalid SecDiv */
+        env->badaddr = secdiv;
         riscv_raise_exception(env, RISCV_EXCP_SECCELL_INV_SDID, GETPC());
     } else {
         /* Next instruction is valid entry instruction => switch SecDiv */
@@ -240,6 +247,7 @@ target_ulong helper_sret(CPURISCVState *env, target_ulong cpu_pc_deb)
     if(vm == VM_SECCELL) {
         /* Should not return to userspace with URID set to 0 */
         if ((env->urid == RT_ID_SUPERVISOR) && (prev_priv == PRV_U)) {
+            env->badaddr = env->urid;
             riscv_raise_exception(env, RISCV_EXCP_SECCELL_INV_SDID, retpc);
         }
         env->usid = env->urid;

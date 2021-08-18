@@ -1141,6 +1141,7 @@ void riscv_cpu_do_interrupt(CPUState *cs)
         case RISCV_EXCP_SECCELL_ILL_PERM:
         case RISCV_EXCP_SECCELL_INV_SDID:
         case RISCV_EXCP_SECCELL_INV_CELL_STATE:
+        case RISCV_EXCP_SECCELL_ILL_TGT:
             write_tval = true;
             tval = env->badaddr;
             break;

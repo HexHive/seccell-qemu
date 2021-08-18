@@ -582,6 +582,8 @@ static bool trans_jals(DisasContext *ctx, arg_jals *a)
 {
     target_ulong next_pc;
     next_pc = ctx->base.pc_next + a->imm;
+    TCGv target_addr = tcg_temp_new();
+    tcg_gen_movi_tl(target_addr, next_pc);
 
     /* Check misaligned */
     if (!has_ext(ctx, RVC)) {
@@ -591,15 +593,8 @@ static bool trans_jals(DisasContext *ctx, arg_jals *a)
         }
     }
 
-    /* Check next instruction is entry */
-    uint32_t next_insn = opcode_at(&ctx->base, next_pc);
-    if (next_insn != 0x0000200b) {
-        generate_exception(ctx, RISCV_EXCP_SECCELL_ILL_TGT);
-        return true;
-    }
-
     /* Switch SecDiv */
-    gen_helper_jals(cpu_env, get_gpr(ctx, a->rd, EXT_NONE));
+    gen_helper_jals(cpu_env, target_addr, get_gpr(ctx, a->rd, EXT_NONE));
 
     /* Store return address */
     if (a->rd != 0) {

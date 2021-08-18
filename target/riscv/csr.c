@@ -446,7 +446,8 @@ static const target_ulong all_ints = M_MODE_INTERRUPTS | S_MODE_INTERRUPTS |
                          (1ULL << (RISCV_EXCP_SECCELL_ILL_ADDR)) | \
                          (1ULL << (RISCV_EXCP_SECCELL_ILL_PERM)) | \
                          (1ULL << (RISCV_EXCP_SECCELL_INV_SDID)) | \
-                         (1ULL << (RISCV_EXCP_SECCELL_INV_CELL_STATE)))
+                         (1ULL << (RISCV_EXCP_SECCELL_INV_CELL_STATE)) | \
+                         (1ULL << (RISCV_EXCP_SECCELL_ILL_TGT)))
 static const target_ulong vs_delegable_excps = DELEGABLE_EXCPS &
     ~((1ULL << (RISCV_EXCP_S_ECALL)) |
       (1ULL << (RISCV_EXCP_VS_ECALL)) |
