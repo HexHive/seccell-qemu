@@ -468,6 +468,7 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     /* The permissions parameter is only allowed to have the RWX bits set,
      * perms cannot be zero */
     if ((0 != (perms & ~RT_PERMS)) || !perms) {
+        env->badaddr = (((perms)? 0:1) << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
@@ -479,7 +480,13 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
 
     target_ulong usid = env->usid;
-    if ((usid > (meta.M - 1)) || (target > (meta.M - 1))) {
+    if (usid > (meta.M - 1)) {
+        /* Invalid / too high caller or target SecDiv ID */
+        return -RISCV_EXCP_SECCELL_INV_SDID;
+    }
+    
+    if (!target || (target > (meta.M - 1))) {
+        env->badaddr = target;
         /* Invalid / too high caller or target SecDiv ID */
         return -RISCV_EXCP_SECCELL_INV_SDID;
     }
@@ -521,11 +528,13 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
 
     if ((0 == (source_perms & RT_V)) || (0 == (source_perms & RT_PERMS))) {
+        env->badaddr = (2 << 8) | perms;
         /* Current SecDiv doesn't have access to the cell in question at all */
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     if ((perms | source_perms) != source_perms) {
+        env->badaddr = (2 << 8) | perms;
         /* Provided permissions are not a subset of the current permissions */
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
@@ -539,6 +548,7 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
 
     if (0 != (perms & target_perms)) {
+        env->badaddr = (3 << 8) | perms;
         /* Current perms already contain at least parts of the new perms */
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
@@ -553,9 +563,9 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
 
     /* Drop permissions for source SecDiv */
-    perms &= ~RT_PERMS;
+    source_perms &= ~RT_PERMS;
 
-    ret = riscv_store_perms(env, source_perms_addr, (uint8_t *)&perms);
+    ret = riscv_store_perms(env, source_perms_addr, (uint8_t *)&source_perms);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
