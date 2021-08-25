@@ -253,7 +253,7 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     /* The permissions parameter is only allowed to have the RWX bits set,
      * perms cannot be zero */
     if ((0 != (perms & ~RT_PERMS)) || !perms) {
-        env->badaddr = (((perms)? 0:1) << 8) | perms;
+        env->badaddr = (!perms << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
@@ -265,14 +265,14 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
 
     target_ulong usid = env->usid;
-    if (usid > (meta.M - 1)) {
-        env->badaddr = target;
-        /* Invalid / too high caller or target SecDiv ID */
-        return -RISCV_EXCP_SECCELL_INV_SDID;
-    }
+    /* Check caller SecDiv ID => should never occur since USID is checked on
+       SecDiv switch */
+    assert(usid <= (meta.M - 1));
+
+    /* Check target SecDiv ID */
     if (!target || (target > (meta.M - 1))) {
+        /* Invalid / too high target SecDiv ID */
         env->badaddr = target;
-        /* Invalid / too high caller or target SecDiv ID */
         return -RISCV_EXCP_SECCELL_INV_SDID;
     }
 
@@ -313,14 +313,14 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
 
     if ((0 == (source_perms & RT_V)) || (0 == (source_perms & RT_PERMS))) {
-        env->badaddr = (2 << 8) | perms;
         /* Current SecDiv doesn't have access to the cell in question at all */
+        env->badaddr = (2 << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     if ((perms | source_perms) != source_perms) {
-        env->badaddr = (2 << 8) | perms;
         /* Provided permissions are not a subset of the current permissions */
+        env->badaddr = (2 << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
@@ -333,8 +333,8 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
 
     if (0 != (perms & target_perms)) {
-        env->badaddr = (3 << 8) | perms;
         /* Current perms already contain at least parts of the new perms */
+        env->badaddr = (3 << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
@@ -383,10 +383,9 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     }
 
     target_ulong usid = env->usid;
-    if (usid > (meta.M - 1)) {
-        /* Invalid / too high SecDiv ID */
-        return -RISCV_EXCP_SECCELL_INV_SDID;
-    }
+    /* Check caller SecDiv ID => should never occur since USID is checked on
+       SecDiv switch */
+    assert(usid <= (meta.M - 1));
 
     /* Retrieve the necessary addresses */
     cell_loc_t cell;
@@ -423,14 +422,14 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     }
 
     if ((0 == (current_perms & RT_V)) || (0 == (current_perms & RT_PERMS))) {
-        env->badaddr = (2 << 8) | perms;
         /* Current SecDiv doesn't have access to the cell in question at all */
+        env->badaddr = (2 << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     if ((perms | current_perms) != current_perms) {
-        env->badaddr = (2 << 8) | perms;
         /* Provided permissions are not a subset of the current permissions */
+        env->badaddr = (2 << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
@@ -468,7 +467,7 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     /* The permissions parameter is only allowed to have the RWX bits set,
      * perms cannot be zero */
     if ((0 != (perms & ~RT_PERMS)) || !perms) {
-        env->badaddr = (((perms)? 0:1) << 8) | perms;
+        env->badaddr = (!perms << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
@@ -480,14 +479,14 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
 
     target_ulong usid = env->usid;
-    if (usid > (meta.M - 1)) {
-        /* Invalid / too high caller or target SecDiv ID */
-        return -RISCV_EXCP_SECCELL_INV_SDID;
-    }
-    
+    /* Check caller SecDiv ID => should never occur since USID is checked on
+       SecDiv switch */
+    assert(usid <= (meta.M - 1));
+
+    /* Check target SecDiv ID */
     if (!target || (target > (meta.M - 1))) {
+        /* Invalid / too high target SecDiv ID */
         env->badaddr = target;
-        /* Invalid / too high caller or target SecDiv ID */
         return -RISCV_EXCP_SECCELL_INV_SDID;
     }
 
@@ -528,14 +527,14 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
 
     if ((0 == (source_perms & RT_V)) || (0 == (source_perms & RT_PERMS))) {
-        env->badaddr = (2 << 8) | perms;
         /* Current SecDiv doesn't have access to the cell in question at all */
+        env->badaddr = (2 << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
     if ((perms | source_perms) != source_perms) {
-        env->badaddr = (2 << 8) | perms;
         /* Provided permissions are not a subset of the current permissions */
+        env->badaddr = (2 << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
@@ -548,8 +547,8 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
 
     if (0 != (perms & target_perms)) {
-        env->badaddr = (3 << 8) | perms;
         /* Current perms already contain at least parts of the new perms */
+        env->badaddr = (3 << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
@@ -596,7 +595,7 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
     /* The permissions parameter is only allowed to have the RWX bits set,
      * perms cannot be zero */
     if ((0 != (perms & ~RT_PERMS)) || !perms) {
-        env->badaddr = (((perms)? 0:1) << 8) | perms;
+        env->badaddr = (!perms << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
@@ -606,6 +605,10 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
         /* Encountered an error => pass it on */
         return ret;
     }
+
+    /* Check caller SecDiv ID => should never occur since USID is checked on
+       SecDiv switch */
+    assert(env->usid <= (meta.M - 1));
 
     cell_loc_t cell;
     ret = riscv_find_cell_addr(env, &meta, &cell, vaddr);
@@ -675,10 +678,9 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
     }
 
     target_ulong usid = env->usid;
-    if (usid > (meta.M - 1)) {
-        /* Invalid / too high SecDiv ID */
-        return -RISCV_EXCP_SECCELL_INV_SDID;
-    }
+    /* Check caller SecDiv ID => should never occur since USID is checked on
+       SecDiv switch */
+    assert(usid <= (meta.M - 1));
 
     /* Retrieve the necessary addresses */
     cell_loc_t cell;
@@ -702,8 +704,8 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
         return ret;
     }
     if (!is_valid_cell(cell_desc)) {
-        env->badaddr = 0;
         /* Cell is invalid */
+        env->badaddr = 0;
         return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
@@ -717,6 +719,7 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
 
     if ((0 == (perms & RT_V)) || (0 == (perms & RT_PERMS))) {
         /* Current SecDiv doesn't have access to the cell in question at all */
+        env->badaddr = (2 << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
@@ -731,8 +734,8 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
         }
 
         if ((i != usid) && ((perms & RT_V) != 0) && ((perms & RT_PERMS) != 0)) {
-            env->badaddr = 1;
             /* Some other SecDiv still has access => error out */
+            env->badaddr = 1;
             return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
         }
 
@@ -797,7 +800,7 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     /* The permissions parameter is only allowed to have the RWX bits set,
      * perms cannot be zero */
     if ((0 != (perms & ~RT_PERMS)) || !perms) {
-        env->badaddr = (((perms)? 0:1) << 8) | perms;
+        env->badaddr = (!perms << 8) | perms;
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
@@ -809,10 +812,9 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     }
 
     target_ulong usid = env->usid;
-    if (usid > (meta.M - 1)) {
-        /* Invalid / too high SecDiv ID */
-        return -RISCV_EXCP_SECCELL_INV_SDID;
-    }
+    /* Check caller SecDiv ID => should never occur since USID is checked on
+       SecDiv switch */
+    assert(usid <= (meta.M - 1));
 
     /* Retrieve the necessary addresses */
     cell_loc_t cell;
@@ -834,8 +836,8 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
         return ret;
     }
     if (is_valid_cell(cell_desc)) {
-        env->badaddr = 0;
         /* Cell is already valid */
+        env->badaddr = 0;
         return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
