@@ -580,9 +580,9 @@ static bool trans_csrrci(DisasContext *ctx, arg_csrrci *a)
 
 static bool trans_jals(DisasContext *ctx, arg_jals *a)
 {
-    target_ulong next_pc;
-    next_pc = ctx->base.pc_next + a->imm;
     TCGv target_addr = tcg_temp_new();
+    target_ulong next_pc = ctx->base.pc_next + a->imm;
+
     tcg_gen_movi_tl(target_addr, next_pc);
 
     /* Check misaligned */
@@ -593,8 +593,8 @@ static bool trans_jals(DisasContext *ctx, arg_jals *a)
         }
     }
 
-    /* Switch SecDiv */
-    gen_helper_jals(cpu_env, target_addr, get_gpr(ctx, a->rd, EXT_NONE));
+    /* Check next instruction is entry and switch SecDiv in case of success */
+    gen_helper_sdswitch(cpu_env, target_addr, get_gpr(ctx, a->rd, EXT_NONE));
 
     /* Store return address */
     if (a->rd != 0) {
@@ -602,7 +602,7 @@ static bool trans_jals(DisasContext *ctx, arg_jals *a)
     }
 
     /* Do the actual control flow transfer */
-    gen_goto_tb(ctx, 0, ctx->base.pc_next + a->imm);
+    gen_goto_tb(ctx, 0, next_pc);
     ctx->base.is_jmp = DISAS_NORETURN;
 
     return true;
@@ -625,7 +625,7 @@ static bool trans_jalrs(DisasContext *ctx, arg_jalrs *a)
     }
 
     /* Check next instruction is entry and switch SecDiv in case of success */
-    gen_helper_jalrs(cpu_env, cpu_pc, get_gpr(ctx, a->rs2, EXT_NONE));
+    gen_helper_sdswitch(cpu_env, cpu_pc, get_gpr(ctx, a->rs2, EXT_NONE));
 
     /* Store return address */
     if (a->rd != 0) {
