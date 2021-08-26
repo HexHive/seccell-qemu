@@ -301,6 +301,7 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
     if (!is_valid_cell(cell_desc)) {
         /* Cell is invalid */
+        env->badaddr = 0;
         return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
@@ -410,6 +411,7 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     }
     if (!is_valid_cell(cell_desc)) {
         /* Cell is invalid */
+        env->badaddr = 0;
         return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
@@ -515,6 +517,7 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     }
     if (!is_valid_cell(cell_desc)) {
         /* Cell is invalid */
+        env->badaddr = 0;
         return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
@@ -626,6 +629,7 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
     }
     if (!is_valid_cell(cell_desc)) {
         /* Cell is invalid */
+        env->badaddr = 0;
         return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
@@ -735,7 +739,7 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
 
         if ((i != usid) && ((perms & RT_V) != 0) && ((perms & RT_PERMS) != 0)) {
             /* Some other SecDiv still has access => error out */
-            env->badaddr = 1;
+            env->badaddr = 2;
             return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
         }
 
@@ -837,7 +841,7 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     }
     if (is_valid_cell(cell_desc)) {
         /* Cell is already valid */
-        env->badaddr = 0;
+        env->badaddr = 1;
         return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
