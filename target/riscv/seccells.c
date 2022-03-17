@@ -579,9 +579,9 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
 }
 
 /*
- * Count the number of SecDivs having access to a cell with specified perms
+ * Check whether the current SecDiv has exclusive access to the given address
  */
-int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
+int riscv_excl(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
                 target_ulong perms)
 {
     uint64_t satp_mode;
@@ -611,7 +611,8 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
 
     /* Check caller SecDiv ID => should never occur since USID is checked on
        SecDiv switch */
-    assert(env->usid <= (meta.M - 1));
+    target_ulong usid = env->usid;
+    assert(usid <= (meta.M - 1));
 
     cell_loc_t cell;
     ret = riscv_find_cell_addr(env, &meta, &cell, vaddr);
@@ -649,10 +650,11 @@ int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
             return ret;
         }
 
-        if (((perms | current_perms) == current_perms) &&
+        if ((i != usid) && ((perms | current_perms) == current_perms) &&
             ((current_perms & RT_V) != 0)) {
             /* Found SecDiv s.t. perms subset current_perms => no exclusivity */
-            (*dest)++;
+            *dest = 1;
+            break;
         }
     }
     return 0;

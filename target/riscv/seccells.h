@@ -65,9 +65,9 @@ int riscv_protect(CPURISCVState *env, target_ulong vaddr, target_ulong perms);
 int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
                 target_ulong perms);
 int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
-                target_ulong perms);
-int riscv_count(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
-                target_ulong perms);
+               target_ulong perms);
+int riscv_excl(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
+               target_ulong perms);
 int riscv_inval(CPURISCVState *env, target_ulong vaddr);
 int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms);
 

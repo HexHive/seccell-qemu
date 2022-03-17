@@ -683,11 +683,11 @@ static bool trans_tfer(DisasContext *ctx, arg_tfer *a)
     return true;
 }
 
-static bool trans_count(DisasContext *ctx, arg_count *a)
+static bool trans_excl(DisasContext *ctx, arg_excl *a)
 {
     TCGv dest = tcg_temp_new();
 
-    gen_helper_count(dest, cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+    gen_helper_excl(dest, cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
                      get_gpr(ctx, a->rs2, EXT_NONE));
 
     gen_set_gpr(ctx, a->rd, dest);

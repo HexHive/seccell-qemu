@@ -79,7 +79,7 @@ void helper_sdswitch(CPURISCVState *env, target_ulong pc, target_ulong secdiv)
         riscv_raise_exception(env, -ret, GETPC());
     }
 
-    if (cpu_ldl_code(env, pc) != 0x0000200b) {
+    if (cpu_ldl_code(env, pc) != 0x0000100b) {
         env->badaddr = pc;
         /* Next instruction is not an entry instruction as expected */
         riscv_raise_exception(env, RISCV_EXCP_SECCELL_ILL_TGT, GETPC());
@@ -124,11 +124,11 @@ void helper_tfer(CPURISCVState *env, target_ulong addr, target_ulong target,
     }
 }
 
-target_ulong helper_count(CPURISCVState *env, target_ulong addr,
+target_ulong helper_excl(CPURISCVState *env, target_ulong addr,
         target_ulong perms)
 {
     target_ulong val = 0;
-    int ret = riscv_count(env, &val, addr, perms);
+    int ret = riscv_excl(env, &val, addr, perms);
 
     if (ret < 0) {
         riscv_raise_exception(env, -ret, GETPC());
