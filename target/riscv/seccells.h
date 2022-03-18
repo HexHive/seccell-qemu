@@ -66,6 +66,8 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
                 target_ulong perms);
 int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
                target_ulong perms);
+int riscv_recv(CPURISCVState *env, target_ulong vaddr, target_ulong source,
+               target_ulong perms);
 int riscv_excl(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
                target_ulong perms);
 int riscv_inval(CPURISCVState *env, target_ulong vaddr);

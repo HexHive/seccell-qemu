@@ -683,6 +683,18 @@ static bool trans_tfer(DisasContext *ctx, arg_tfer *a)
     return true;
 }
 
+static bool trans_recv(DisasContext *ctx, arg_recv *a)
+{
+    TCGv perms = tcg_temp_new();
+    tcg_gen_movi_tl(perms, a->imm);
+
+    gen_helper_recv(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                    get_gpr(ctx, a->rs2, EXT_NONE), perms);
+
+    tcg_temp_free(perms);
+    return true;
+}
+
 static bool trans_excl(DisasContext *ctx, arg_excl *a)
 {
     TCGv dest = tcg_temp_new();

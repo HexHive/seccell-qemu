@@ -579,6 +579,59 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
 }
 
 /*
+ * Receive permissions that were granted by another SecDiv
+ */
+int riscv_recv(CPURISCVState *env, target_ulong vaddr, target_ulong source,
+               target_ulong perms)
+{
+    uint64_t satp_mode;
+    if (riscv_cpu_mxl(env) == MXL_RV32) {
+        satp_mode = SATP32_MODE;
+    } else {
+        satp_mode = SATP64_MODE;
+    }
+    /* The instruction is only allowed if using SecCells virtual memory mode */
+    if (get_field(env->satp, satp_mode) != VM_SECCELL) {
+        return -RISCV_EXCP_ILLEGAL_INST;
+    }
+
+    /* The permissions parameter is only allowed to have the RWX bits set,
+     * perms cannot be zero */
+    if ((0 != (perms & ~RT_PERMS)) || !perms) {
+        env->badaddr = (!perms << 8) | perms;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
+    }
+
+    sc_meta_t meta;
+    int ret = riscv_get_sc_meta(env, &meta);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    target_ulong usid = env->usid;
+    /* Check caller SecDiv ID => should never occur since USID is checked on
+       SecDiv switch */
+    assert(usid <= (meta.M - 1));
+
+    /* Check source SecDiv ID */
+    if (!source || (source > (meta.M - 1))) {
+        /* Invalid / too high source SecDiv ID */
+        env->badaddr = source;
+        return -RISCV_EXCP_SECCELL_INV_SDID;
+    }
+
+    /*
+     *
+     * TODO: actually implement SCRecv functionality - this is only a place-
+     * holder for now!
+     *
+     */
+    assert(!"Not implemented");
+    return 0;
+}
+
+/*
  * Check whether the current SecDiv has exclusive access to the given address
  */
 int riscv_excl(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,

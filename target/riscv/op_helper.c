@@ -124,6 +124,16 @@ void helper_tfer(CPURISCVState *env, target_ulong addr, target_ulong target,
     }
 }
 
+void helper_recv(CPURISCVState *env, target_ulong addr, target_ulong source,
+        target_ulong perms)
+{
+    int ret = riscv_recv(env, addr, source, perms);
+
+    if (ret < 0) {
+        riscv_raise_exception(env, -ret, GETPC());
+    }
+}
+
 target_ulong helper_excl(CPURISCVState *env, target_ulong addr,
         target_ulong perms)
 {
