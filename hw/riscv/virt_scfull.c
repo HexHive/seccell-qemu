@@ -1023,7 +1023,7 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
 }
 
 static const TypeInfo virt_machine_typeinfo = {
-    .name       = MACHINE_TYPE_NAME("virt SecureCells"),
+    .name       = MACHINE_TYPE_NAME("virt_sc"),
     .parent     = TYPE_MACHINE,
     .class_init = virt_machine_class_init, 
     .instance_init = virt_machine_instance_init,
