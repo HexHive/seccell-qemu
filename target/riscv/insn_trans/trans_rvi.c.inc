@@ -653,6 +653,7 @@ static bool trans_entry(DisasContext *ctx, arg_entry *a)
 
 static bool trans_prot(DisasContext *ctx, arg_prot *a)
 {
+    REQUIRE_EXT(ctx, RVXSC);
     gen_helper_prot(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
                     get_gpr(ctx, a->rs2, EXT_NONE));
 
@@ -661,6 +662,7 @@ static bool trans_prot(DisasContext *ctx, arg_prot *a)
 
 static bool trans_grant(DisasContext *ctx, arg_grant *a)
 {
+    REQUIRE_EXT(ctx, RVXSC);
     TCGv perms = tcg_temp_new();
     tcg_gen_movi_tl(perms, a->imm);
 
@@ -673,6 +675,7 @@ static bool trans_grant(DisasContext *ctx, arg_grant *a)
 
 static bool trans_tfer(DisasContext *ctx, arg_tfer *a)
 {
+    REQUIRE_EXT(ctx, RVXSC);
     TCGv perms = tcg_temp_new();
     tcg_gen_movi_tl(perms, a->imm);
 
@@ -697,6 +700,7 @@ static bool trans_recv(DisasContext *ctx, arg_recv *a)
 
 static bool trans_excl(DisasContext *ctx, arg_excl *a)
 {
+    REQUIRE_EXT(ctx, RVXSC);
     TCGv dest = tcg_temp_new();
 
     gen_helper_excl(dest, cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
@@ -709,6 +713,7 @@ static bool trans_excl(DisasContext *ctx, arg_excl *a)
 
 static bool trans_inval(DisasContext *ctx, arg_inval *a)
 {
+    REQUIRE_EXT(ctx, RVXSC);
     gen_helper_inval(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE));
 
     return true;
@@ -716,6 +721,7 @@ static bool trans_inval(DisasContext *ctx, arg_inval *a)
 
 static bool trans_reval(DisasContext *ctx, arg_reval *a)
 {
+    REQUIRE_EXT(ctx, RVXSC);
     gen_helper_reval(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
                      get_gpr(ctx, a->rs2, EXT_NONE));
 

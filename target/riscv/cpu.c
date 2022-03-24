@@ -155,6 +155,13 @@ static void rv64_base_cpu_init(Object *obj)
     set_misa(env, MXL_RV64, 0);
 }
 
+static void rv64_base_securecell_cpu_init(Object *obj) 
+{
+    CPURISCVState *env = &RISCV_CPU(obj)->env;
+    set_misa(env, MXL_RV64, RVI | RVM | RVA | RVF | RVD | RVC | RVU | RVXSC);
+    set_priv_version(env, PRIV_VERSION_1_10_0);
+}
+
 static void rv64_sifive_u_cpu_init(Object *obj)
 {
     CPURISCVState *env = &RISCV_CPU(obj)->env;
@@ -522,6 +529,9 @@ static void riscv_cpu_realize(DeviceState *dev, Error **errp)
         if (cpu->cfg.ext_h) {
             ext |= RVH;
         }
+        if (cpu->cfg.ext_xsc) {
+            ext |= RVXSC;
+        }
         if (cpu->cfg.ext_v) {
             int vext_version = VEXT_VERSION_0_07_1;
             ext |= RVV;
@@ -810,6 +820,7 @@ static const TypeInfo riscv_cpu_type_infos[] = {
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_U34,       rv32_sifive_u_cpu_init),
 #elif defined(TARGET_RISCV64)
     DEFINE_CPU(TYPE_RISCV_CPU_BASE64,           rv64_base_cpu_init),
+    DEFINE_CPU(TYPE_RISCV_CPU_SCFULL,           rv64_base_securecell_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_E51,       rv64_sifive_e_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_SIFIVE_U54,       rv64_sifive_u_cpu_init),
     DEFINE_CPU(TYPE_RISCV_CPU_SHAKTI_C,         rv64_sifive_u_cpu_init),
