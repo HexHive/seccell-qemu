@@ -27,10 +27,13 @@
 #define VIRT_CPUS_MAX 8
 #define VIRT_SOCKETS_MAX 8
 
-#define TYPE_RISCV_VIRT_MACHINE MACHINE_TYPE_NAME("virt")
+#define TYPE_RISCV_VIRT_MACHINE         MACHINE_TYPE_NAME("virt")
+#define TYPE_RISCV_VIRT_SC_MACHINE      MACHINE_TYPE_NAME("virt_sc")
 typedef struct RISCVVirtState RISCVVirtState;
 DECLARE_INSTANCE_CHECKER(RISCVVirtState, RISCV_VIRT_MACHINE,
                          TYPE_RISCV_VIRT_MACHINE)
+DECLARE_INSTANCE_CHECKER(RISCVVirtState, RISCV_VIRT_SC_MACHINE,
+                         TYPE_RISCV_VIRT_SC_MACHINE)
 
 struct RISCVVirtState {
     /*< private >*/

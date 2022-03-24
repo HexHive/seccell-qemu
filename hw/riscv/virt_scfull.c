@@ -748,10 +748,10 @@ static FWCfgState *create_fw_cfg(const MachineState *mc)
     return fw_cfg;
 }
 
-static void virt_machine_init(MachineState *machine)
+static void virt_sc_machine_init(MachineState *machine)
 {
     const MemMapEntry *memmap = virt_memmap;
-    RISCVVirtState *s = RISCV_VIRT_MACHINE(machine);
+    RISCVVirtState *s = RISCV_VIRT_SC_MACHINE(machine);
     MemoryRegion *system_memory = get_system_memory();
     MemoryRegion *mask_rom = g_new(MemoryRegion, 1);
     char *plic_hart_config, *soc_name;
@@ -978,14 +978,14 @@ static void virt_machine_init(MachineState *machine)
     virt_flash_map(s, system_memory);
 }
 
-static void virt_machine_instance_init(Object *obj)
+static void virt_sc_machine_instance_init(Object *obj)
 {
 }
 
 static bool virt_get_aclint(Object *obj, Error **errp)
 {
     MachineState *ms = MACHINE(obj);
-    RISCVVirtState *s = RISCV_VIRT_MACHINE(ms);
+    RISCVVirtState *s = RISCV_VIRT_SC_MACHINE(ms);
 
     return s->have_aclint;
 }
@@ -993,17 +993,17 @@ static bool virt_get_aclint(Object *obj, Error **errp)
 static void virt_set_aclint(Object *obj, bool value, Error **errp)
 {
     MachineState *ms = MACHINE(obj);
-    RISCVVirtState *s = RISCV_VIRT_MACHINE(ms);
+    RISCVVirtState *s = RISCV_VIRT_SC_MACHINE(ms);
 
     s->have_aclint = value;
 }
 
-static void virt_machine_class_init(ObjectClass *oc, void *data)
+static void virt_sc_machine_class_init(ObjectClass *oc, void *data)
 {
     MachineClass *mc = MACHINE_CLASS(oc);
 
     mc->desc = "RISC-V VirtIO board, full SecureCells support";
-    mc->init = virt_machine_init;
+    mc->init = virt_sc_machine_init;
     mc->max_cpus = VIRT_CPUS_MAX;
     mc->default_cpu_type = TYPE_RISCV_CPU_SCFULL;
     mc->pci_allow_0_address = true;
@@ -1022,17 +1022,17 @@ static void virt_machine_class_init(ObjectClass *oc, void *data)
                                           "emulating ACLINT devices");
 }
 
-static const TypeInfo virt_machine_typeinfo = {
+static const TypeInfo virt_sc_machine_typeinfo = {
     .name       = MACHINE_TYPE_NAME("virt_sc"),
     .parent     = TYPE_MACHINE,
-    .class_init = virt_machine_class_init, 
-    .instance_init = virt_machine_instance_init,
+    .class_init = virt_sc_machine_class_init, 
+    .instance_init = virt_sc_machine_instance_init,
     .instance_size = sizeof(RISCVVirtState),
 };
 
-static void virt_machine_init_register_types(void)
+static void virt_sc_machine_init_register_types(void)
 {
-    type_register_static(&virt_machine_typeinfo);
+    type_register_static(&virt_sc_machine_typeinfo);
 }
 
-type_init(virt_machine_init_register_types)
+type_init(virt_sc_machine_init_register_types)
