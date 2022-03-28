@@ -158,8 +158,8 @@ static void rv64_base_cpu_init(Object *obj)
 static void rv64_base_securecell_cpu_init(Object *obj) 
 {
     CPURISCVState *env = &RISCV_CPU(obj)->env;
-    set_misa(env, MXL_RV64, RVI | RVM | RVA | RVF | RVD | RVC | RVU | RVXSC);
-    set_priv_version(env, PRIV_VERSION_1_10_0);
+    set_misa(env, MXL_RV64, 0);
+    qdev_prop_set_bit(DEVICE(obj), "x-sc", true);
 }
 
 static void rv64_sifive_u_cpu_init(Object *obj)
@@ -645,6 +645,7 @@ static Property riscv_cpu_properties[] = {
     DEFINE_PROP_STRING("priv_spec", RISCVCPU, cfg.priv_spec),
 
     /* These are experimental so mark with 'x-' */
+    DEFINE_PROP_BOOL("x-sc", RISCVCPU, cfg.ext_xsc, false),
     DEFINE_PROP_BOOL("x-zba", RISCVCPU, cfg.ext_zba, false),
     DEFINE_PROP_BOOL("x-zbb", RISCVCPU, cfg.ext_zbb, false),
     DEFINE_PROP_BOOL("x-zbc", RISCVCPU, cfg.ext_zbc, false),
