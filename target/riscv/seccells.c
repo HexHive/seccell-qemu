@@ -687,10 +687,33 @@ int riscv_excl(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
         return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
     }
 
-    *dest = 0;
     /* We already checked that we're on a 64bit machine when we arrive here,
      * using SATP64_PPN without platform check is therefore safe */
     hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
+    hwaddr source_perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * usid)
+                               + cell.idx;
+
+    /* Load and check current SecDiv permissions */
+    uint8_t source_perms;
+    ret = riscv_load_perms(env, source_perms_addr, &source_perms);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    if ((0 == (source_perms & RT_V)) || (0 == (source_perms & RT_PERMS))) {
+        /* Current SecDiv doesn't have access to the cell in question at all */
+        env->badaddr = (2 << 8) | perms;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
+    }
+
+    if ((perms | source_perms) != source_perms) {
+        /* Provided permissions are not a subset of the current permissions */
+        env->badaddr = (2 << 8) | perms;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
+    }
+
+    *dest = 0;
     /* Start at 1 because we exclude the supervisor with SecDiv ID 0 */
     for (unsigned int i = 1; i < meta.M; i++) {
         hwaddr perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * i)
