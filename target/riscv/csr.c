@@ -1055,6 +1055,17 @@ static RISCVException write_satp(CPURISCVState *env, int csrno,
     return RISCV_EXCP_NONE;
 }
 
+/* TODO: Only allow write from m-mode */
+static RISCVException write_usid(CPURISCVState *env, int csrno, target_ulong val) 
+{
+    if (!riscv_feature(env, RISCV_FEATURE_MMU)) {
+        return RISCV_EXCP_NONE;
+    }
+    env->usid = val;
+
+    return RISCV_EXCP_NONE;
+}
+
 static RISCVException read_usid(CPURISCVState *env, int csrno, target_ulong *val)
 {
     if (!riscv_feature(env, RISCV_FEATURE_MMU)) {
@@ -1938,7 +1949,7 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
 
     /* Supervisor Protection and Translation */
     [CSR_SATP]     = { "satp",     smode, read_satp,    write_satp      },
-    [CSR_USID]     = { "usid",     smode, read_usid                     },
+    [CSR_USID]     = { "usid",     smode, read_usid,    write_usid      },
     [CSR_URID]     = { "urid",     smode, read_urid,    write_urid      },
     [CSR_UXID]     = { "uxid",     smode, read_uxid,    write_uxid     },
 
