@@ -688,6 +688,7 @@ static bool trans_tfer(DisasContext *ctx, arg_tfer *a)
 
 static bool trans_recv(DisasContext *ctx, arg_recv *a)
 {
+    REQUIRE_EXT(ctx, RVXSC);
     TCGv perms = tcg_temp_new();
     tcg_gen_movi_tl(perms, a->imm);
 
