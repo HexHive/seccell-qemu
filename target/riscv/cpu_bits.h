@@ -479,6 +479,8 @@ typedef enum {
 #define RT_META_T_SHIFT   32           // in 128-bit metacell desc
 #define RT_META_R_SHIFT    0           // in 128-bit metacell desc
 #define RT_PROT_SHIFT      1           // in 8-bit permissions
+#define RT_GT_PERM_SHIFT   0           // in 32-bit grant table entry
+#define RT_GT_SDID_SHIFT   3           // in 32-bit grant table entry
 /* Sizes */
 #define RT_VFN_SIZE       36
 #define RT_PFN_SIZE       44
@@ -486,6 +488,8 @@ typedef enum {
 #define RT_META_M_SIZE    32
 #define RT_META_T_SIZE    32
 #define RT_META_R_SIZE    32
+#define RT_GT_PERM_SIZE    3
+#define RT_GT_SDID_SIZE   29
 /* Masks */
 #define RT_VA_MASK        ((1ull << RT_VFN_SIZE) - 1) // 36 bits of VA
 #define RT_PA_MASK        ((1ull << RT_PFN_SIZE) - 1) // 44 bits of PA
@@ -494,6 +498,8 @@ typedef enum {
 #define RT_META_M_MASK    ((1ull << RT_META_M_SIZE) - 1) // 32 bits for number of SecDivs
 #define RT_META_T_MASK    ((1ull << RT_META_T_SIZE) - 1) // 32 bits for number of permission lines per SecDiv
 #define RT_META_R_MASK    ((1ull << RT_META_R_SIZE) - 1) // 32 bits for upper bound to number of SecDivs
+#define RT_GT_PERM_MASK   ((1ull << RT_GT_PERM_SIZE) - 1) // 3 bits for permissions in grant table entries
+#define RT_GT_SDID_MASK   ((1ull << RT_GT_SDID_SIZE) - 1) // 29 bits for SecDiv ID in grant table entries
 /* Special */
 #define RT_PERMS          (RT_R | RT_W | RT_X)
 #define RT_ID_ANY         0xffff

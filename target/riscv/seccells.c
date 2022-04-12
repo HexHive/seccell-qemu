@@ -94,7 +94,7 @@ int riscv_store_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell)
 }
 
 /*
- * Load permissions from the range table
+ * Load permissions from the permission table
  */
 int riscv_load_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms)
 {
@@ -124,7 +124,7 @@ int riscv_load_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms)
 }
 
 /*
- * Store permissions to the range table
+ * Store permissions to the permission table
  */
 int riscv_store_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms)
 {
@@ -143,6 +143,69 @@ int riscv_store_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms)
 
     /* Actually store the perms */
     address_space_stb(cs->as, paddr, *perms, attrs, &res);
+    if (res != MEMTX_OK) {
+        return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+    }
+
+    return 0;
+}
+
+/*
+ * Load a SecDiv/permission tuple from the grant table
+ */
+int riscv_load_grant(CPURISCVState *env, hwaddr paddr, uint32_t *sdid,
+                     uint8_t *perms)
+{
+    MemTxResult res;
+    MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
+    CPUState *cs = env_cpu(env);
+
+    /* Check PMP */
+    int pmp_prot;
+    int pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
+                                                     paddr, sizeof(uint32_t),
+                                                     MMU_DATA_LOAD, PRV_S);
+    if (pmp_ret != TRANSLATE_SUCCESS) {
+        return -RISCV_EXCP_LOAD_ACCESS_FAULT;
+    }
+
+    /* Actually load the perms */
+    uint32_t grant = address_space_ldl(cs->as, paddr, attrs, &res);
+    if (res != MEMTX_OK) {
+        return -RISCV_EXCP_LOAD_ACCESS_FAULT;
+    }
+
+    /* Divide the grant table entry up into SecDiv ID and actual permission */
+    *perms = (uint8_t)((grant >> RT_GT_PERM_SHIFT) & RT_GT_PERM_MASK);
+    *sdid = (grant >> RT_GT_SDID_SHIFT) & RT_GT_SDID_MASK;
+
+    return 0;
+}
+
+/*
+ * Store a SecDiv/permission tuple to the grant table
+ */
+int riscv_store_grant(CPURISCVState *env, hwaddr paddr, uint32_t *sdid,
+                      uint8_t *perms)
+{
+    MemTxResult res;
+    MemTxAttrs attrs = MEMTXATTRS_UNSPECIFIED;
+    CPUState *cs = env_cpu(env);
+
+    /* Check PMP */
+    int pmp_prot;
+    int pmp_ret = riscv_cpu_get_physical_address_pmp(env, &pmp_prot, NULL,
+                                                     paddr, sizeof(uint32_t),
+                                                     MMU_DATA_STORE, PRV_S);
+    if (pmp_ret != TRANSLATE_SUCCESS) {
+        return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
+    }
+
+    /* Construct the grant table entry from the given SecDiv ID and perms */
+    uint32_t grant = (*sdid << RT_GT_SDID_SHIFT) | (*perms << RT_GT_PERM_SHIFT);
+
+    /* Actually store the grant table entry */
+    address_space_stl(cs->as, paddr, grant, attrs, &res);
     if (res != MEMTX_OK) {
         return -RISCV_EXCP_STORE_AMO_ACCESS_FAULT;
     }

@@ -65,6 +65,10 @@ int riscv_load_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell);
 int riscv_store_cell(CPURISCVState *env, hwaddr paddr, uint128_t *cell);
 int riscv_load_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms);
 int riscv_store_perms(CPURISCVState *env, hwaddr paddr, uint8_t *perms);
+int riscv_load_grant(CPURISCVState *env, hwaddr paddr, uint32_t *sdid,
+                     uint8_t *perms);
+int riscv_store_grant(CPURISCVState *env, hwaddr paddr, uint32_t *sdid,
+                      uint8_t *perms);
 
 int riscv_get_sc_meta(CPURISCVState *env, sc_meta_t *meta);
 int riscv_find_cell_addr(CPURISCVState *env, sc_meta_t *meta, cell_loc_t *cell,
