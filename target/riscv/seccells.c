@@ -171,6 +171,8 @@ int riscv_get_sc_meta(CPURISCVState *env, sc_meta_t *meta)
     meta->M = (metacell >> RT_META_M_SHIFT) & RT_META_M_MASK;
     meta->T = (metacell >> RT_META_T_SHIFT) & RT_META_T_MASK;
     meta->S = CELL_DESC_SZ * meta->T;
+    meta->R = (metacell >> RT_META_R_SHIFT) & RT_META_R_MASK;
+    meta->Q = meta->T * meta->R;
 
     return 0;
 }

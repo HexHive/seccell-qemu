@@ -32,11 +32,20 @@
 typedef unsigned __int128 uint128_t;
 #endif
 
+/*
+ * SecureCells metadata structure (in reference to the metacell)
+ *  - N, M, T, R are located in the metacell
+ *  - S, Q are for convenient access and calculated based on T, R
+ *  - T implicitly adds an upper bound to the number of cells (currently: 4T)
+ *  - R explicitly adds an upper bound to the number of SecDivs
+ */
 typedef struct sc_meta {
     target_ulong N, /* number of SecCells                               */
                  M, /* number of SecDivs                                */
                  S, /* number of cache lines for cells                  */
-                 T; /* number of cache lines for permissions per SecDiv */
+                 T, /* number of cache lines for permissions per SecDiv */
+                 R, /* upper bound for number of SecDivs                */
+                 Q; /* number of cache lines for permissions            */
 } sc_meta_t;
 
 typedef struct cell_loc {

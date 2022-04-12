@@ -470,20 +470,22 @@ typedef enum {
 #define RT_D          0x0000000000000080ull // Dirty
 
 /* Shifts */
-#define RT_VA_START_SHIFT 0            // in 128-bit cell desc
+#define RT_VA_START_SHIFT  0           // in 128-bit cell desc
 #define RT_VA_END_SHIFT   36           // in 128-bit cell desc
 #define RT_PA_SHIFT       72           // in 128-bit cell desc
 #define RT_VAL_SHIFT      127          // in 128-bit cell desc
 #define RT_META_N_SHIFT   96           // in 128-bit metacell desc
 #define RT_META_M_SHIFT   64           // in 128-bit metacell desc
 #define RT_META_T_SHIFT   32           // in 128-bit metacell desc
-#define RT_PROT_SHIFT     1            // in 8-bit permissions
+#define RT_META_R_SHIFT    0           // in 128-bit metacell desc
+#define RT_PROT_SHIFT      1           // in 8-bit permissions
 /* Sizes */
 #define RT_VFN_SIZE       36
 #define RT_PFN_SIZE       44
 #define RT_META_N_SIZE    32
 #define RT_META_M_SIZE    32
 #define RT_META_T_SIZE    32
+#define RT_META_R_SIZE    32
 /* Masks */
 #define RT_VA_MASK        ((1ull << RT_VFN_SIZE) - 1) // 36 bits of VA
 #define RT_PA_MASK        ((1ull << RT_PFN_SIZE) - 1) // 44 bits of PA
@@ -491,6 +493,7 @@ typedef enum {
 #define RT_META_N_MASK    ((1ull << RT_META_N_SIZE) - 1) // 32 bits for number of cells
 #define RT_META_M_MASK    ((1ull << RT_META_M_SIZE) - 1) // 32 bits for number of SecDivs
 #define RT_META_T_MASK    ((1ull << RT_META_T_SIZE) - 1) // 32 bits for number of permission lines per SecDiv
+#define RT_META_R_MASK    ((1ull << RT_META_R_SIZE) - 1) // 32 bits for upper bound to number of SecDivs
 /* Special */
 #define RT_PERMS          (RT_R | RT_W | RT_X)
 #define RT_ID_ANY         0xffff
