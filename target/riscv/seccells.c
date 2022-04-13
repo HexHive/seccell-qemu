@@ -833,19 +833,39 @@ int riscv_excl(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
     *dest = 0;
     /* Start at 1 because we exclude the supervisor with SecDiv ID 0 */
     for (unsigned int i = 1; i < meta.M; i++) {
+        /* Only check for non-supervisor SecDivs different from the caller */
+        if (i == usid) {
+            continue;
+        }
+
         hwaddr perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * i)
                             + cell.idx;
+        hwaddr grant_addr = rt_base + (meta.S * 64) + (meta.Q * 64)
+                            + (meta.T * 256 * i) + (cell.idx * 4);
 
+        /* Load permissions from the permission table */
         uint8_t current_perms;
         ret = riscv_load_perms(env, perms_addr, &current_perms);
         if (ret < 0) {
             /* Encountered an error => pass it on */
             return ret;
         }
+        /* Load outstanding permissions from the grant table */
+        uint32_t grant_sdid;
+        uint8_t grant_perms;
+        ret = riscv_load_grant(env, grant_addr, &grant_sdid, &grant_perms);
+        if (ret < 0) {
+            /* Encountered an error => pass it on */
+            return ret;
+        }
 
-        if ((i != usid) && ((perms | current_perms) == current_perms) &&
+        /* Check whether given permissions are subset of current or outstanding
+           permissions */
+        if (((perms | current_perms | grant_perms) ==
+                (current_perms | grant_perms)) &&
             ((current_perms & RT_V) != 0)) {
-            /* Found SecDiv s.t. perms subset current_perms => no exclusivity */
+            /* Found SecDiv s.t. perms subset existing/granted perms
+               => no exclusivity */
             *dest = 1;
             break;
         }
