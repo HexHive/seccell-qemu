@@ -655,17 +655,96 @@ int riscv_recv(CPURISCVState *env, target_ulong vaddr, target_ulong source,
     /* Check source SecDiv ID */
     if (!source || (source > (meta.M - 1))) {
         /* Invalid / too high source SecDiv ID */
-        env->badaddr = source;
+        env->badaddr = (0ul << 32) | source;
         return -RISCV_EXCP_SECCELL_INV_SDID;
     }
 
-    /*
-     *
-     * TODO: actually implement SCRecv functionality - this is only a place-
-     * holder for now!
-     *
-     */
-    assert(!"Not implemented");
+    /* Retrieve the necessary addresses */
+    cell_loc_t cell;
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    /* We already checked that we're on a 64bit machine when we arrive here,
+     * using SATP64_PPN without platform check is therefore safe */
+    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
+    hwaddr target_perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * usid)
+                               + cell.idx;
+    hwaddr grant_entry_addr = rt_base + (meta.S * 64) + (meta.Q * 64)
+                              + (meta.T * 256 * source)
+                              + (cell.idx * 4);
+
+    /* Load and check cell */
+    uint128_t cell_desc;
+    ret = riscv_load_cell(env, cell.paddr, &cell_desc);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+    if (!is_valid_cell(cell_desc)) {
+        /* Cell is invalid */
+        env->badaddr = 0;
+        return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
+    }
+
+    /* Load the SecDiv ID / permission tuple from the grant table */
+    uint8_t grant_perms;
+    uint32_t grant_sdid;
+    ret = riscv_load_grant(env, grant_entry_addr, &grant_sdid, &grant_perms);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    /* Check parameter/grant table entry compliance */
+    if (grant_sdid != usid) {
+        /* SecDiv in the grant table is not the current SecDiv */
+        env->badaddr = (1ul << 32) | usid;
+        return -RISCV_EXCP_SECCELL_INV_SDID;
+    }
+    if ((perms | grant_perms) != grant_perms) {
+        /* Provided permissions are not a subset of the granted permissions */
+        env->badaddr = (3 << 8) | perms;
+        return -RISCV_EXCP_SECCELL_ILL_PERM;
+    }
+
+    /* Update grant table */
+    if (perms == grant_perms) {
+        /* "Empty" the grant table entry */
+        grant_perms = 0;
+        grant_sdid = -1;
+    } else {
+        /* Remove the requested subset from the granted permissions */
+        grant_perms &= ~perms;
+    }
+    /* Write back the updated (SDID, perm) tuple to the grant table */
+    ret = riscv_store_grant(env, grant_entry_addr, (uint32_t *)&grant_sdid,
+                            (uint8_t *)&grant_perms);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    /* Load the requesting SecDiv's current permissions */
+    uint8_t curr_perms;
+    ret = riscv_load_perms(env, target_perms_addr, &curr_perms);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    /* Update the permissions in the permission table */
+    curr_perms |= perms;
+    ret = riscv_store_perms(env, target_perms_addr, &curr_perms);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
+    }
+
+    CPUState *cs = env_cpu(env);
+    tlb_flush(cs);
     return 0;
 }
 
