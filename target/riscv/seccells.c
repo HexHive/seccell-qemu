@@ -922,19 +922,43 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
-    /* Make sure that nobody else has permissions on this cell */
+    /* Make sure that nobody else has permissions on this cell and that there
+       are no outstanding permissions in the grant table for this cell */
+    hwaddr grant_addr;
+    uint32_t grant_sdid;
+    uint8_t grant_perms;
     for (unsigned int i = 1; i < meta.M; i++) {
+        /* Only check for non-supervisor SecDivs different from the caller */
+        if (i == usid) {
+            continue;
+        }
+        /* Here: i != supervisor or caller SecDiv ID */
         perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * i) + cell.idx;
+        grant_addr = rt_base + (meta.S * 64) + (meta.Q * 64)
+                     + (meta.T * 256 * i) + (cell.idx * 4);
 
+        /* Check permission table for SecDiv i */
         ret = riscv_load_perms(env, perms_addr, &perms);
         if (ret < 0) {
             /* Encountered an error => pass it on */
             return ret;
         }
-
-        if ((i != usid) && ((perms & RT_V) != 0) && ((perms & RT_PERMS) != 0)) {
+        if (((perms & RT_V) != 0) && ((perms & RT_PERMS) != 0)) {
             /* Some other SecDiv still has access => error out */
             env->badaddr = 2;
+            return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
+        }
+
+        /* Check grant table for SecDiv i */
+        ret = riscv_load_grant(env, grant_addr, &grant_sdid, &grant_perms);
+        if (ret < 0) {
+            /* Encountered an error => pass it on */
+            return ret;
+        }
+        if ((grant_sdid != RT_ID_INV) || (grant_perms != 0)) {
+            /* Some other SecDiv granted permissions on the cell that haven't
+               been received yet */
+            env->badaddr = 3;
             return -RISCV_EXCP_SECCELL_INV_CELL_STATE;
         }
 
@@ -973,6 +997,17 @@ int riscv_inval(CPURISCVState *env, target_ulong vaddr)
             /* Encountered an error => pass it on */
             return ret;
         }
+    }
+
+    /* Clear and write back grant table entry for current SecDiv */
+    grant_addr = rt_base + (meta.S * 64) + (meta.Q * 64)
+                 + (meta.T * 256 * usid) + (cell.idx * 4);
+    grant_sdid = RT_ID_INV;
+    grant_perms = 0;
+    ret = riscv_store_grant(env, grant_addr, &grant_sdid, &grant_perms);
+    if (ret < 0) {
+        /* Encountered an error => pass it on */
+        return ret;
     }
 
     CPUState *cs = env_cpu(env);

@@ -504,6 +504,7 @@ typedef enum {
 #define RT_PERMS          (RT_R | RT_W | RT_X)
 #define RT_ID_ANY         0xffff
 #define RT_ID_SUPERVISOR  0x0000
+#define RT_ID_INV         (-1ull & RT_GT_SDID_MASK)
 
 /* VM modes (satp.mode) privileged ISA 1.10 */
 #define VM_1_10_MBARE       0
