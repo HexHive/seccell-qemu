@@ -202,7 +202,8 @@ int riscv_store_grant(CPURISCVState *env, hwaddr paddr, uint32_t *sdid,
     }
 
     /* Construct the grant table entry from the given SecDiv ID and perms */
-    uint32_t grant = (*sdid << RT_GT_SDID_SHIFT) | (*perms << RT_GT_PERM_SHIFT);
+    uint32_t grant = ((*sdid & RT_GT_SDID_MASK) << RT_GT_SDID_SHIFT)
+                     | ((*perms & RT_GT_PERM_MASK) << RT_GT_PERM_SHIFT);
 
     /* Actually store the grant table entry */
     address_space_stl(cs->as, paddr, grant, attrs, &res);
@@ -354,8 +355,9 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
     hwaddr source_perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * usid)
                                + cell.idx;
-    hwaddr target_perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * target)
-                               + cell.idx;
+    hwaddr grant_entry_addr = rt_base + (meta.S * 64) + (meta.Q * 64)
+                              + (meta.T * 256 * usid)
+                              + (cell.idx * 4);
 
     /* Load and check cell */
     uint128_t cell_desc;
@@ -390,24 +392,9 @@ int riscv_grant(CPURISCVState *env, target_ulong vaddr, target_ulong target,
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
-    /* Load and check target SecDiv permissions */
-    uint8_t target_perms;
-    ret = riscv_load_perms(env, target_perms_addr, &target_perms);
-    if (ret < 0) {
-        /* Encountered an error => pass it on */
-        return ret;
-    }
-
-    if (0 != (perms & target_perms)) {
-        /* Current perms already contain at least parts of the new perms */
-        env->badaddr = (3 << 8) | perms;
-        return -RISCV_EXCP_SECCELL_ILL_PERM;
-    }
-
-    /* Calculate and store new permissions for target SecDiv */
-    target_perms |= perms | RT_V;
-
-    ret = riscv_store_perms(env, target_perms_addr, &target_perms);
+    /* Write (SDID, perm) tuple to grant table */
+    ret = riscv_store_grant(env, grant_entry_addr, (uint32_t *)&target,
+                            (uint8_t *)&perms);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
@@ -570,8 +557,9 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
     hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
     hwaddr source_perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * usid)
                                + cell.idx;
-    hwaddr target_perms_addr = rt_base + (meta.S * 64) + (meta.T * 64 * target)
-                               + cell.idx;
+    hwaddr grant_entry_addr = rt_base + (meta.S * 64) + (meta.Q * 64)
+                              + (meta.T * 256 * usid)
+                              + (cell.idx * 4);
 
     /* Load and check cell */
     uint128_t cell_desc;
@@ -606,24 +594,9 @@ int riscv_tfer(CPURISCVState *env, target_ulong vaddr, target_ulong target,
         return -RISCV_EXCP_SECCELL_ILL_PERM;
     }
 
-    /* Load and check target SecDiv permissions */
-    uint8_t target_perms;
-    ret = riscv_load_perms(env, target_perms_addr, &target_perms);
-    if (ret < 0) {
-        /* Encountered an error => pass it on */
-        return ret;
-    }
-
-    if (0 != (perms & target_perms)) {
-        /* Current perms already contain at least parts of the new perms */
-        env->badaddr = (3 << 8) | perms;
-        return -RISCV_EXCP_SECCELL_ILL_PERM;
-    }
-
-    /* Calculate and store new permissions for target SecDiv */
-    target_perms |= perms | RT_V;
-
-    ret = riscv_store_perms(env, target_perms_addr, &target_perms);
+    /* Write (SDID, perm) tuple to grant table */
+    ret = riscv_store_grant(env, grant_entry_addr, (uint32_t *)&target,
+                            (uint8_t *)&perms);
     if (ret < 0) {
         /* Encountered an error => pass it on */
         return ret;
