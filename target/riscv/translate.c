@@ -165,9 +165,14 @@ static void generate_exception_mtval(DisasContext *ctx, int excp)
     ctx->base.is_jmp = DISAS_NORETURN;
 }
 
-static void gen_exception_illegal(DisasContext *ctx)
+static void gen_exception_illegal(DisasContext *ctx, uint32_t insn)
 {
-    generate_exception(ctx, RISCV_EXCP_ILLEGAL_INST);
+    TCGv inst_opcode = tcg_temp_new();
+    tcg_gen_movi_tl(cpu_pc, ctx->base.pc_next);
+    tcg_gen_movi_tl(inst_opcode, insn);
+    tcg_gen_st_tl(inst_opcode, cpu_env, offsetof(CPURISCVState, badaddr));
+    gen_helper_raise_exception(cpu_env, tcg_constant_i32(RISCV_EXCP_ILLEGAL_INST));
+    ctx->base.is_jmp = DISAS_NORETURN;
 }
 
 static void gen_exception_inst_addr_mis(DisasContext *ctx)
@@ -584,11 +589,11 @@ static void decode_opc(CPURISCVState *env, DisasContext *ctx, uint16_t opcode)
     /* check for compressed insn */
     if (extract16(opcode, 0, 2) != 3) {
         if (!has_ext(ctx, RVC)) {
-            gen_exception_illegal(ctx);
+            gen_exception_illegal(ctx, opcode);
         } else {
             ctx->pc_succ_insn = ctx->base.pc_next + 2;
             if (!decode_insn16(ctx, opcode)) {
-                gen_exception_illegal(ctx);
+                gen_exception_illegal(ctx, opcode);
             }
         }
     } else {
@@ -598,7 +603,7 @@ static void decode_opc(CPURISCVState *env, DisasContext *ctx, uint16_t opcode)
                                              ctx->base.pc_next + 2));
         ctx->pc_succ_insn = ctx->base.pc_next + 4;
         if (!decode_insn32(ctx, opcode32)) {
-            gen_exception_illegal(ctx);
+            gen_exception_illegal(ctx, opcode32);
         }
     }
 }

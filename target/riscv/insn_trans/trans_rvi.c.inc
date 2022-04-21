@@ -20,7 +20,7 @@
 
 static bool trans_illegal(DisasContext *ctx, arg_empty *a)
 {
-    gen_exception_illegal(ctx);
+    gen_exception_illegal(ctx, 0);
     return true;
 }
 

@@ -1133,6 +1133,7 @@ void riscv_cpu_do_interrupt(CPUState *cs)
         case RISCV_EXCP_INST_PAGE_FAULT:
         case RISCV_EXCP_LOAD_PAGE_FAULT:
         case RISCV_EXCP_STORE_PAGE_FAULT:
+        case RISCV_EXCP_ILLEGAL_INST:
             write_tval  = true;
             tval = env->badaddr;
             break;
