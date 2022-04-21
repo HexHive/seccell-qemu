@@ -85,5 +85,12 @@ int riscv_excl(CPURISCVState *env, target_ulong *dest, target_ulong vaddr,
                target_ulong perms);
 int riscv_inval(CPURISCVState *env, target_ulong vaddr);
 int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms);
+int riscv_ckcell(CPURISCVState *env, target_ulong *res, target_ulong vld, 
+                target_ulong addr);
+int riscv_celladdr(CPURISCVState *env, target_ulong *res, target_ulong ci);
+int riscv_permaddr(CPURISCVState *env, target_ulong *res, target_ulong ci, 
+                target_ulong sd);
+int riscv_grantaddr(CPURISCVState *env, target_ulong *res, target_ulong ci, 
+                target_ulong sd);
 
 #endif /* SECCELLS_H */

@@ -1135,3 +1135,90 @@ int riscv_reval(CPURISCVState *env, target_ulong vaddr, target_ulong perms)
     tlb_flush(cs);
     return 0;
 }
+
+int riscv_ckcell(CPURISCVState *env, target_ulong *res, target_ulong expect_vld, 
+                target_ulong vaddr)
+{
+    sc_meta_t meta;
+    int ret = riscv_get_sc_meta(env, &meta);
+    assert(ret >= 0);
+    
+
+    target_ulong usid = env->usid;
+    /* Check caller SecDiv ID => should never occur since USID is checked on
+       SecDiv switch */
+    assert(usid <= (meta.M - 1));
+
+    /* Retrieve the necessary addresses */
+    cell_loc_t cell;
+    ret = riscv_find_cell_addr(env, &meta, &cell, vaddr);
+    if (ret < 0) {
+        /* Not found returns 0 */
+        *res = 0;
+        return 0;
+    }
+
+    /* We already checked that we're on a 64bit machine when we arrive here,
+     * using SATP64_PPN without platform check is therefore safe */
+    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
+
+    /* Load cell */
+    uint128_t cell_desc;
+    ret = riscv_load_cell(env, cell.paddr, &cell_desc);
+    assert (ret >= 0);
+
+    bool vld = is_valid_cell(cell_desc);
+    /* vld        is bool. 0 = invalid, 1 = valid 
+     * expect_vld is also bool. 0 = invalid, 1 = valid */
+    if(vld == (expect_vld & 0x1)) 
+        *res = (cell.paddr - rt_base) / sizeof(uint128_t);
+    else
+        *res = -1;
+    return 0;
+}
+
+int riscv_celladdr(CPURISCVState *env, target_ulong *res, target_ulong ci)
+{
+    /* We already checked that we're on a 64bit machine when we arrive here,
+     * using SATP64_PPN without platform check is therefore safe */
+    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
+    
+    *res = rt_base + (ci * sizeof(uint128_t));
+    return 0;
+}
+
+#define SC_CACHELINESZ   64
+int riscv_permaddr(CPURISCVState *env, target_ulong *res, target_ulong ci, 
+                target_ulong sd)
+{
+    sc_meta_t meta;
+    int ret = riscv_get_sc_meta(env, &meta);
+    assert(ret >= 0);
+
+    /* We already checked that we're on a 64bit machine when we arrive here,
+     * using SATP64_PPN without platform check is therefore safe */
+    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
+    
+    *res = rt_base + (16 * meta.T * SC_CACHELINESZ) + (sd * meta.T * SC_CACHELINESZ) + ci;
+    return 0;
+}
+
+int riscv_grantaddr(CPURISCVState *env, target_ulong *res, target_ulong ci, 
+                target_ulong sd)
+{
+    sc_meta_t meta;
+    int ret = riscv_get_sc_meta(env, &meta);
+    assert(ret >= 0);
+
+    /* We already checked that we're on a 64bit machine when we arrive here,
+     * using SATP64_PPN without platform check is therefore safe */
+    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
+    
+    *res = rt_base 
+            + (16 * meta.T * SC_CACHELINESZ) 
+            + (meta.R * meta.T * SC_CACHELINESZ) 
+            + (sd * 4 * meta.T * SC_CACHELINESZ) 
+            + (4 * ci);
+    return 0;
+}
+

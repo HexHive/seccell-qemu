@@ -164,6 +164,42 @@ void helper_reval(CPURISCVState *env, target_ulong addr, target_ulong perms)
     }
 }
 
+target_ulong helper_ckcell(CPURISCVState *env, target_ulong vld, target_ulong addr) {
+    target_ulong val = 0;
+    int ret = riscv_ckcell(env, &val, vld, addr);
+
+    if(ret < 0) {
+        riscv_raise_exception(env, -ret, GETPC());
+    }
+    return val;
+}
+target_ulong helper_celladdr(CPURISCVState *env, target_ulong ci) {
+    target_ulong val = 0;
+    int ret = riscv_celladdr(env, &val, ci);
+
+    if(ret < 0) {
+        riscv_raise_exception(env, -ret, GETPC());
+    }
+    return val;
+}
+target_ulong helper_permaddr(CPURISCVState *env, target_ulong ci, target_ulong sd) {
+    target_ulong val = 0;
+    int ret = riscv_permaddr(env, &val, ci, sd);
+
+    if(ret < 0) {
+        riscv_raise_exception(env, -ret, GETPC());
+    }
+    return val;
+}
+target_ulong helper_grantaddr(CPURISCVState *env, target_ulong ci, target_ulong sd) {
+    target_ulong val = 0;
+    int ret = riscv_grantaddr(env, &val, ci, sd);
+
+    if(ret < 0) {
+        riscv_raise_exception(env, -ret, GETPC());
+    }
+    return val;
+}
 #ifndef CONFIG_USER_ONLY
 
 target_ulong helper_sret(CPURISCVState *env, target_ulong cpu_pc_deb)

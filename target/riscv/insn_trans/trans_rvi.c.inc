@@ -728,3 +728,42 @@ static bool trans_reval(DisasContext *ctx, arg_reval *a)
 
     return true;
 }
+
+static bool trans_sccck(DisasContext *ctx, arg_sccck *a)
+{
+    TCGv dest = tcg_temp_new();
+    gen_helper_ckcell(dest, cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                      get_gpr(ctx, a->rs2, EXT_NONE));
+    gen_set_gpr(ctx, a->rd, dest);
+    tcg_temp_free(dest);
+    return true;
+}
+
+static bool trans_scca(DisasContext *ctx, arg_scca *a)
+{
+    TCGv dest = tcg_temp_new();
+    gen_helper_celladdr(dest, cpu_env, get_gpr(ctx, a->rs1, EXT_NONE));
+    gen_set_gpr(ctx, a->rd, dest);
+    tcg_temp_free(dest);
+    return true;
+}
+
+static bool trans_scpa(DisasContext *ctx, arg_scpa *a)
+{
+    TCGv dest = tcg_temp_new();
+    gen_helper_permaddr(dest, cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                      get_gpr(ctx, a->rs2, EXT_NONE));
+    gen_set_gpr(ctx, a->rd, dest);
+    tcg_temp_free(dest);
+    return true;
+}
+
+static bool trans_scga(DisasContext *ctx, arg_scga *a)
+{
+    TCGv dest = tcg_temp_new();
+    gen_helper_grantaddr(dest, cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                      get_gpr(ctx, a->rs2, EXT_NONE));
+    gen_set_gpr(ctx, a->rd, dest);
+    tcg_temp_free(dest);
+    return true;
+}

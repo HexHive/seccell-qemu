@@ -83,6 +83,12 @@ DEF_HELPER_3(excl, tl, env, tl, tl)
 DEF_HELPER_2(inval, void, env, tl)
 DEF_HELPER_3(reval, void, env, tl, tl)
 
+/* Seccells helpers */
+DEF_HELPER_3(ckcell, tl, env, tl, tl)
+DEF_HELPER_2(celladdr, tl, env, tl)
+DEF_HELPER_3(permaddr, tl, env, tl, tl)
+DEF_HELPER_3(grantaddr, tl, env, tl, tl)
+
 /* Hypervisor functions */
 #ifndef CONFIG_USER_ONLY
 DEF_HELPER_1(hyp_tlb_flush, void, env)
