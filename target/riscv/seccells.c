@@ -1158,10 +1158,6 @@ int riscv_ckcell(CPURISCVState *env, target_ulong *res, target_ulong expect_vld,
         return 0;
     }
 
-    /* We already checked that we're on a 64bit machine when we arrive here,
-     * using SATP64_PPN without platform check is therefore safe */
-    hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
-
     /* Load cell */
     uint128_t cell_desc;
     ret = riscv_load_cell(env, cell.paddr, &cell_desc);
@@ -1170,8 +1166,8 @@ int riscv_ckcell(CPURISCVState *env, target_ulong *res, target_ulong expect_vld,
     bool vld = is_valid_cell(cell_desc);
     /* vld        is bool. 0 = invalid, 1 = valid 
      * expect_vld is also bool. 0 = invalid, 1 = valid */
-    if(vld == (expect_vld & 0x1)) 
-        *res = (cell.paddr - rt_base) / sizeof(uint128_t);
+    if(vld == (expect_vld & 0x1))
+        *res = cell.idx;
     else
         *res = 0;
     return 0;
