@@ -164,7 +164,7 @@ void helper_reval(CPURISCVState *env, target_ulong addr, target_ulong perms)
     }
 }
 
-target_ulong helper_ckcell(CPURISCVState *env, target_ulong vld, target_ulong addr) {
+target_ulong helper_ckcell(CPURISCVState *env, target_ulong addr, target_ulong vld) {
     target_ulong val = 0;
     int ret = riscv_ckcell(env, &val, vld, addr);
 

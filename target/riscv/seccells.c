@@ -1153,8 +1153,8 @@ int riscv_ckcell(CPURISCVState *env, target_ulong *res, target_ulong expect_vld,
     cell_loc_t cell;
     ret = riscv_find_cell_addr(env, &meta, &cell, vaddr);
     if (ret < 0) {
-        /* Not found returns 0 */
-        *res = 0;
+        /* Not found returns -1 */
+        *res = -1;
         return 0;
     }
 
@@ -1173,7 +1173,7 @@ int riscv_ckcell(CPURISCVState *env, target_ulong *res, target_ulong expect_vld,
     if(vld == (expect_vld & 0x1)) 
         *res = (cell.paddr - rt_base) / sizeof(uint128_t);
     else
-        *res = -1;
+        *res = 0;
     return 0;
 }
 
@@ -1195,6 +1195,9 @@ int riscv_permaddr(CPURISCVState *env, target_ulong *res, target_ulong ci,
     int ret = riscv_get_sc_meta(env, &meta);
     assert(ret >= 0);
 
+    /* special indexing scheme, aligned with the hardware */
+    sd = (sd >> 63) ? 0 : sd ? sd : env->usid;
+
     /* We already checked that we're on a 64bit machine when we arrive here,
      * using SATP64_PPN without platform check is therefore safe */
     hwaddr rt_base = (hwaddr)get_field(env->satp, SATP64_PPN) << PGSHIFT;
@@ -1209,6 +1212,9 @@ int riscv_grantaddr(CPURISCVState *env, target_ulong *res, target_ulong ci,
     sc_meta_t meta;
     int ret = riscv_get_sc_meta(env, &meta);
     assert(ret >= 0);
+
+    /* special indexing scheme, aligned with the hardware */
+    sd = (sd >> 63) ? 0 : sd ? sd : env->usid;
 
     /* We already checked that we're on a 64bit machine when we arrive here,
      * using SATP64_PPN without platform check is therefore safe */
