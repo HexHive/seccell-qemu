@@ -89,6 +89,12 @@ DEF_HELPER_2(celladdr, tl, env, tl)
 DEF_HELPER_3(permaddr, tl, env, tl, tl)
 DEF_HELPER_3(grantaddr, tl, env, tl, tl)
 
+/* Helpers for trap-and-emulate */
+DEF_HELPER_4(traprinst, void, env, tl, tl, tl)
+DEF_HELPER_4(trapiinst, void, env, tl, tl, tl)
+DEF_HELPER_4(trapsinst, void, env, tl, tl, tl)
+DEF_HELPER_3(trapjinst, void, env, tl, tl)
+
 /* Hypervisor functions */
 #ifndef CONFIG_USER_ONLY
 DEF_HELPER_1(hyp_tlb_flush, void, env)

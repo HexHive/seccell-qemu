@@ -200,6 +200,37 @@ target_ulong helper_grantaddr(CPURISCVState *env, target_ulong ci, target_ulong 
     }
     return val;
 }
+
+void helper_traprinst(CPURISCVState *env, target_ulong rs1val, target_ulong rs2val, target_ulong rd) {
+    env->mtirs1 = rs1val;
+    env->mtirs2 = rs2val;
+    env->mtird  = rd;
+
+    riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+}
+
+void helper_trapiinst(CPURISCVState *env, target_ulong rs1val, target_ulong immval, target_ulong rd) {
+    env->mtirs1 = rs1val;
+    env->mtiimm = immval;
+    env->mtird  = rd;
+
+    riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+}
+
+void helper_trapsinst(CPURISCVState *env, target_ulong rs1val, target_ulong rs2val, target_ulong immval) {
+    env->mtirs1 = rs1val;
+    env->mtirs2 = rs2val;
+    env->mtiimm = immval;
+
+    riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+}
+void helper_trapjinst(CPURISCVState *env, target_ulong immval, target_ulong rd) {
+    env->mtiimm = immval;
+    env->mtird  = rd;
+
+    riscv_raise_exception(env, RISCV_EXCP_ILLEGAL_INST, GETPC());
+}
+
 #ifndef CONFIG_USER_ONLY
 
 target_ulong helper_sret(CPURISCVState *env, target_ulong cpu_pc_deb)
@@ -306,6 +337,12 @@ target_ulong helper_mret(CPURISCVState *env, target_ulong cpu_pc_deb)
     mstatus = set_field(mstatus, MSTATUS_MPIE, 1);
     mstatus = set_field(mstatus, MSTATUS_MPP, PRV_U);
     mstatus = set_field(mstatus, MSTATUS_MPV, 0);
+    if(env->mtirdval_valid) {
+        env->gpr[env->mtird] = env->mtirdval;
+        env->mtird = 0;
+        env->mtirdval = 0;
+        env->mtirdval_valid = 0;
+    }
     env->mstatus = mstatus;
     riscv_cpu_set_mode(env, prev_priv);
 

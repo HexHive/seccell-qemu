@@ -653,78 +653,127 @@ static bool trans_entry(DisasContext *ctx, arg_entry *a)
 
 static bool trans_prot(DisasContext *ctx, arg_prot *a)
 {
-    REQUIRE_EXT(ctx, RVXSC);
-    gen_helper_prot(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+    if(has_ext(ctx, RVXSC)) 
+        gen_helper_prot(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
                     get_gpr(ctx, a->rs2, EXT_NONE));
+    else {
+        tcg_gen_st_i64(tcg_constant_i64(ctx->opcode), cpu_env,
+                   offsetof(CPURISCVState, badaddr));
+        TCGv rd = tcg_temp_new();
+        tcg_gen_movi_tl(rd, 0);
+        gen_helper_traprinst(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                    get_gpr(ctx, a->rs2, EXT_NONE), rd);
+        tcg_temp_free(rd);
+    }
 
     return true;
 }
 
 static bool trans_grant(DisasContext *ctx, arg_grant *a)
 {
-    REQUIRE_EXT(ctx, RVXSC);
     TCGv perms = tcg_temp_new();
     tcg_gen_movi_tl(perms, a->imm);
-
-    gen_helper_grant(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
-                     get_gpr(ctx, a->rs2, EXT_NONE), perms);
-
+    if(has_ext(ctx, RVXSC)) 
+        gen_helper_grant(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                        get_gpr(ctx, a->rs2, EXT_NONE), perms);
+    else {
+        tcg_gen_st_i64(tcg_constant_i64(ctx->opcode), cpu_env,
+                   offsetof(CPURISCVState, badaddr));
+        gen_helper_trapsinst(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                        get_gpr(ctx, a->rs2, EXT_NONE), perms);
+    }
     tcg_temp_free(perms);
     return true;
 }
 
 static bool trans_tfer(DisasContext *ctx, arg_tfer *a)
 {
-    REQUIRE_EXT(ctx, RVXSC);
     TCGv perms = tcg_temp_new();
     tcg_gen_movi_tl(perms, a->imm);
-
-    gen_helper_tfer(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
-                    get_gpr(ctx, a->rs2, EXT_NONE), perms);
-
+    if(has_ext(ctx, RVXSC)) 
+        gen_helper_tfer(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                        get_gpr(ctx, a->rs2, EXT_NONE), perms);
+    else {
+        tcg_gen_st_i64(tcg_constant_i64(ctx->opcode), cpu_env,
+                   offsetof(CPURISCVState, badaddr));      
+        gen_helper_trapsinst(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                        get_gpr(ctx, a->rs2, EXT_NONE), perms);
+    }
     tcg_temp_free(perms);
     return true;
 }
 
 static bool trans_recv(DisasContext *ctx, arg_recv *a)
 {
-    REQUIRE_EXT(ctx, RVXSC);
     TCGv perms = tcg_temp_new();
     tcg_gen_movi_tl(perms, a->imm);
-
-    gen_helper_recv(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
-                    get_gpr(ctx, a->rs2, EXT_NONE), perms);
-
+    if(has_ext(ctx, RVXSC)) 
+        gen_helper_recv(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                        get_gpr(ctx, a->rs2, EXT_NONE), perms);
+    else {
+        tcg_gen_st_i64(tcg_constant_i64(ctx->opcode), cpu_env,
+                   offsetof(CPURISCVState, badaddr));       
+        gen_helper_trapsinst(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                        get_gpr(ctx, a->rs2, EXT_NONE), perms);
+    }
     tcg_temp_free(perms);
     return true;
 }
 
 static bool trans_excl(DisasContext *ctx, arg_excl *a)
 {
-    REQUIRE_EXT(ctx, RVXSC);
-    TCGv dest = tcg_temp_new();
+    if(has_ext(ctx, RVXSC)) {
+        TCGv dest = tcg_temp_new();
 
-    gen_helper_excl(dest, cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
-                     get_gpr(ctx, a->rs2, EXT_NONE));
+        gen_helper_excl(dest, cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                        get_gpr(ctx, a->rs2, EXT_NONE));
 
-    gen_set_gpr(ctx, a->rd, dest);
-    tcg_temp_free(dest);
+        gen_set_gpr(ctx, a->rd, dest);
+        tcg_temp_free(dest);
+    } else {
+        tcg_gen_st_i64(tcg_constant_i64(ctx->opcode), cpu_env,
+                   offsetof(CPURISCVState, badaddr));
+        TCGv rd = tcg_temp_new();
+        tcg_gen_movi_tl(rd, a->rd);
+        gen_helper_traprinst(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                    get_gpr(ctx, a->rs2, EXT_NONE), rd);
+        tcg_temp_free(rd);
+    }
     return true;
 }
 
 static bool trans_inval(DisasContext *ctx, arg_inval *a)
 {
-    REQUIRE_EXT(ctx, RVXSC);
-    gen_helper_inval(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE));
+    if(has_ext(ctx, RVXSC)) 
+        gen_helper_inval(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE));
+    else {
+        tcg_gen_st_i64(tcg_constant_i64(ctx->opcode), cpu_env,
+                   offsetof(CPURISCVState, badaddr));
+        TCGv rs2 = tcg_temp_new();
+        TCGv rd = tcg_temp_new();
+        tcg_gen_movi_tl(rs2, 0);
+        tcg_gen_movi_tl(rd, 0);
+        gen_helper_traprinst(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                            rs2, rd);
+    }
 
     return true;
 }
 
 static bool trans_reval(DisasContext *ctx, arg_reval *a)
 {
-    REQUIRE_EXT(ctx, RVXSC);
-    gen_helper_reval(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+    if(has_ext(ctx, RVXSC)) 
+        gen_helper_reval(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
                      get_gpr(ctx, a->rs2, EXT_NONE));
+    else {
+        tcg_gen_st_i64(tcg_constant_i64(ctx->opcode), cpu_env,
+                   offsetof(CPURISCVState, badaddr));
+        TCGv rd = tcg_temp_new();
+        tcg_gen_movi_tl(rd, 0);
+        gen_helper_traprinst(cpu_env, get_gpr(ctx, a->rs1, EXT_NONE),
+                    get_gpr(ctx, a->rs2, EXT_NONE), rd);
+        tcg_temp_free(rd);
+    }
 
     return true;
 }

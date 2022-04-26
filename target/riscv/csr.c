@@ -1119,6 +1119,69 @@ static RISCVException write_uxid(CPURISCVState *env, int csrno, target_ulong val
     return RISCV_EXCP_NONE;
 }
 
+/* Trap and emulate helpers */
+static RISCVException read_mtirs1(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    if(env->priv != PRV_M)
+        return RISCV_EXCP_ILLEGAL_INST;
+    *val = env->mtirs1;
+
+    return RISCV_EXCP_NONE;
+}
+static RISCVException read_mtirs2(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    if(env->priv != PRV_M)
+        return RISCV_EXCP_ILLEGAL_INST;
+    *val = env->mtirs2;
+
+    return RISCV_EXCP_NONE;
+}
+static RISCVException read_mtiimm(CPURISCVState *env, int csrno, target_ulong *val)
+{
+    if(env->priv != PRV_M)
+        return RISCV_EXCP_ILLEGAL_INST;
+    *val = env->mtiimm;
+
+    return RISCV_EXCP_NONE;
+}
+
+// static RISCVException write_mtirs1(CPURISCVState *env, int csrno, target_ulong val)
+// {
+//     if(env->priv != PRV_M)
+//         return RISCV_EXCP_ILLEGAL_INST;
+//     env->mtirs1 = val;
+
+//     return RISCV_EXCP_NONE;
+// }
+
+// static RISCVException write_mtirs2(CPURISCVState *env, int csrno, target_ulong val)
+// {
+//     if(env->priv != PRV_M)
+//         return RISCV_EXCP_ILLEGAL_INST;
+//     env->mtirs2 = val;
+
+//     return RISCV_EXCP_NONE;
+// }
+
+// static RISCVException write_mtiimm(CPURISCVState *env, int csrno, target_ulong val)
+// {
+//     if(env->priv != PRV_M)
+//         return RISCV_EXCP_ILLEGAL_INST;
+//     env->mtiimm = val;
+
+//     return RISCV_EXCP_NONE;
+// }
+
+static RISCVException write_mtirdval(CPURISCVState *env, int csrno, target_ulong val)
+{
+    if(env->priv != PRV_M)
+        return RISCV_EXCP_ILLEGAL_INST;
+    env->mtirdval = val;
+    env->mtirdval_valid = 1;
+
+    return RISCV_EXCP_NONE;
+}
+
 /* Hypervisor Extensions */
 static RISCVException read_hstatus(CPURISCVState *env, int csrno,
                                    target_ulong *val)
@@ -1952,6 +2015,13 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_USID]     = { "usid",     smode, read_usid,    write_usid      },
     [CSR_URID]     = { "urid",     smode, read_urid,    write_urid      },
     [CSR_UXID]     = { "uxid",     smode, read_uxid,    write_uxid     },
+
+    /* Aiding trap-and-emulate */
+    [CSR_MTIRS1]   = { "mtirs1",   any,   read_mtirs1,  NULL           }, //write_mtirs1     
+    [CSR_MTIRS2]   = { "mtirs2",   any,   read_mtirs2,  NULL           }, //write_mtirs2     
+    [CSR_MTIIMM]   = { "mtiimm",   any,   read_mtiimm,  NULL           }, //write_mtiimm     
+    [CSR_MTIRD]    = { "mtird",    any,   NULL,         NULL           }, //write_mtird
+    [CSR_MTIRDVAL] = { "mtirdval", any,   NULL,         write_mtirdval }, //write_mtirdval
 
     [CSR_HSTATUS]     = { "hstatus",     hmode,   read_hstatus,     write_hstatus     },
     [CSR_HEDELEG]     = { "hedeleg",     hmode,   read_hedeleg,     write_hedeleg     },

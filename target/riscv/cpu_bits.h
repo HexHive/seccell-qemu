@@ -182,6 +182,13 @@
 #define CSR_URID            0x83
 #define CSR_UXID            0x84
 
+/* CSRs for aiding emulation */
+#define CSR_MTIRS1          0xbc0
+#define CSR_MTIRS2          0xbc1
+#define CSR_MTIIMM          0xbc2
+#define CSR_MTIRD           0xbc3
+#define CSR_MTIRDVAL        0xbc4
+
 /* Hpervisor CSRs */
 #define CSR_HSTATUS         0x600
 #define CSR_HEDELEG         0x602
