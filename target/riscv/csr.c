@@ -1172,6 +1172,15 @@ static RISCVException read_mtiimm(CPURISCVState *env, int csrno, target_ulong *v
 //     return RISCV_EXCP_NONE;
 // }
 
+static RISCVException read_mtirdval(CPURISCVState *env, int csrno, target_ulong *val) {
+    if((env->priv != PRV_M) || !env->mtirdval_valid)
+        *val = 0;
+
+    *val = env->mtirdval;
+
+    return RISCV_EXCP_NONE;
+}
+
 static RISCVException write_mtirdval(CPURISCVState *env, int csrno, target_ulong val)
 {
     if(env->priv != PRV_M)
@@ -2021,7 +2030,7 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
     [CSR_MTIRS2]   = { "mtirs2",   any,   read_mtirs2,  NULL           }, //write_mtirs2     
     [CSR_MTIIMM]   = { "mtiimm",   any,   read_mtiimm,  NULL           }, //write_mtiimm     
     [CSR_MTIRD]    = { "mtird",    any,   NULL,         NULL           }, //write_mtird
-    [CSR_MTIRDVAL] = { "mtirdval", any,   NULL,         write_mtirdval }, //write_mtirdval
+    [CSR_MTIRDVAL] = { "mtirdval", any,   read_mtirdval,write_mtirdval }, //write_mtirdval
 
     [CSR_HSTATUS]     = { "hstatus",     hmode,   read_hstatus,     write_hstatus     },
     [CSR_HEDELEG]     = { "hedeleg",     hmode,   read_hedeleg,     write_hedeleg     },
