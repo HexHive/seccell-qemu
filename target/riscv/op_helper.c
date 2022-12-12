@@ -72,6 +72,7 @@ target_ulong helper_csrrw(CPURISCVState *env, int csr,
 
 void helper_sdswitch(CPURISCVState *env, target_ulong pc, target_ulong secdiv)
 {
+    CPUState *cs = env_cpu(env);
     /* Get metacell contents for target validity check */
     sc_meta_t meta;
     int ret = riscv_get_sc_meta(env, &meta);
@@ -93,6 +94,9 @@ void helper_sdswitch(CPURISCVState *env, target_ulong pc, target_ulong secdiv)
         env->urid = env->usid;
         env->usid = secdiv;
     }
+    /* SDSwitch implicitly flushes TLB. 
+     * Required in QEMU, not hardware: QEMU lacks ASID/USID-tagged TLBs */
+    tlb_flush(cs);
 }
 
 void helper_prot(CPURISCVState *env, target_ulong addr, target_ulong perms)
