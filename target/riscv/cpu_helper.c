@@ -1119,6 +1119,7 @@ void riscv_cpu_do_interrupt(CPUState *cs)
     }
 
     if (!async) {
+repeat:
         /* set tval to badaddr for traps with address information */
         switch (cause) {
         case RISCV_EXCP_INST_GUEST_PAGE_FAULT:
@@ -1130,10 +1131,24 @@ void riscv_cpu_do_interrupt(CPUState *cs)
         case RISCV_EXCP_STORE_AMO_ADDR_MIS:
         case RISCV_EXCP_LOAD_ACCESS_FAULT:
         case RISCV_EXCP_STORE_AMO_ACCESS_FAULT:
-        case RISCV_EXCP_INST_PAGE_FAULT:
         case RISCV_EXCP_LOAD_PAGE_FAULT:
         case RISCV_EXCP_STORE_PAGE_FAULT:
         case RISCV_EXCP_ILLEGAL_INST:
+            write_tval  = true;
+            tval = env->badaddr;
+            break;
+
+        case RISCV_EXCP_INST_PAGE_FAULT:
+            /* Coming from sdswitch (helper_sdswitch)
+             * SDSwitch tried to check for load code at target address, 
+            * to check for SDEntry, and got permission error
+             * Revert changes to env */ 
+            if(env->sdswitch_caller != -1) {
+                env->usid = env->sdswitch_caller;
+                env->sdswitch_caller = -1;
+                cause = RISCV_EXCP_SECCELL_ILL_TGT;
+                goto repeat;
+            } 
             write_tval  = true;
             tval = env->badaddr;
             break;

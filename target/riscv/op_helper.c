@@ -79,24 +79,48 @@ void helper_sdswitch(CPURISCVState *env, target_ulong pc, target_ulong secdiv)
     if (ret < 0) {
         riscv_raise_exception(env, -ret, GETPC());
     }
-
-    if (cpu_ldl_code(env, pc) != 0x0000100b) {
-        env->badaddr = pc;
-        /* Next instruction is not an entry instruction as expected */
-        riscv_raise_exception(env, RISCV_EXCP_SECCELL_ILL_TGT, GETPC());
-    } else if ((0 == secdiv) || (secdiv > (meta.M - 1))) {
+    
+    if ((0 == secdiv) || (secdiv > (meta.M - 1))) {
         /* User tries to switch to supervisor SecDiv without trapping into
            supervisor mode or to switch to invalid SecDiv */
         env->badaddr = secdiv;
         riscv_raise_exception(env, RISCV_EXCP_SECCELL_INV_SDID, GETPC());
+        /* Unreachable here */
+    }
+
+    /* 
+     * We need the SDEntry check to respect the permission checks 
+     * of the target secdiv, not the caller secdiv.
+     * The following cpu_ldl_code can have the following outcomes:
+     * - cpu_ldl_code fails due to incorrect permissions, goes directly to riscv_cpu_do_interrupt
+     *   We handle correctly restoring usid in the riscv_cpu_do_interrupt
+     * - cpu_ldl_code succeeds. 
+     *   We restore correct usid immediately afterwards and flush TLB
+     *   We can still trap if code read is not SDEntry
+     * 
+     * SDSwitch implicitly flushes TLB. 
+     * First tlb_flush so that cpu_ldl_code does not read caller's permissions
+     * Second tlb_flush for actually flushing TLB
+     * Required in QEMU, not hardware: QEMU lacks ASID/USID-tagged TLBs
+     * */
+    tlb_flush(cs);
+    env->sdswitch_caller = env->usid;
+    env->usid = secdiv;
+    target_ulong target_bytes = cpu_ldl_code(env, pc);
+    env->usid = env->sdswitch_caller;
+    env->sdswitch_caller = -1;
+    tlb_flush(cs);
+
+    if (target_bytes != 0x0000100b) {
+        env->badaddr = pc;
+        /* Next instruction is not an entry instruction as expected */
+        riscv_raise_exception(env, RISCV_EXCP_SECCELL_ILL_TGT, GETPC());
+        /* Unreachable here */
     } else {
         /* Next instruction is valid entry instruction => switch SecDiv */
         env->urid = env->usid;
         env->usid = secdiv;
     }
-    /* SDSwitch implicitly flushes TLB. 
-     * Required in QEMU, not hardware: QEMU lacks ASID/USID-tagged TLBs */
-    tlb_flush(cs);
 }
 
 void helper_prot(CPURISCVState *env, target_ulong addr, target_ulong perms)

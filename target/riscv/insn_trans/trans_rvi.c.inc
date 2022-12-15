@@ -610,27 +610,30 @@ static bool trans_jals(DisasContext *ctx, arg_jals *a)
 
 static bool trans_jalrs(DisasContext *ctx, arg_jalrs *a)
 {
+    TCGv target_addr = tcg_temp_new();
+
     /* no chaining with JALRS */
     TCGLabel *misaligned = NULL;
     TCGv t0 = tcg_temp_new();
 
     /* Silently ignore odd addresses (just like jalr) */
-    tcg_gen_andi_tl(cpu_pc, get_gpr(ctx, a->rs1, EXT_NONE), (target_ulong)-2);
+    tcg_gen_andi_tl(target_addr, get_gpr(ctx, a->rs1, EXT_NONE), (target_ulong)-2);
 
     /* Check misaligned */
     if (!has_ext(ctx, RVC)) {
         misaligned = gen_new_label();
-        tcg_gen_andi_tl(t0, cpu_pc, 0x2);
+        tcg_gen_andi_tl(t0, target_addr, 0x2);
         tcg_gen_brcondi_tl(TCG_COND_NE, t0, 0x0, misaligned);
     }
 
     /* Check next instruction is entry and switch SecDiv in case of success */
-    gen_helper_sdswitch(cpu_env, cpu_pc, get_gpr(ctx, a->rs2, EXT_NONE));
+    gen_helper_sdswitch(cpu_env, target_addr, get_gpr(ctx, a->rs2, EXT_NONE));
 
     /* Store return address */
     if (a->rd != 0) {
         tcg_gen_movi_tl(cpu_gpr[a->rd], ctx->pc_succ_insn);
     }
+    tcg_gen_mov_tl(cpu_pc, target_addr);
 
     /* Do the actual control flow transfer */
     tcg_gen_lookup_and_goto_ptr();

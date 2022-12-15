@@ -152,6 +152,7 @@ struct CPURISCVState {
     /* This contains QEMU specific information about the virt state. */
     target_ulong virt;
     target_ulong resetvec;
+    target_long sdswitch_caller;  /* seccell */
 
     target_ulong mhartid;
     /*
