@@ -1143,7 +1143,9 @@ repeat:
              * SDSwitch tried to check for load code at target address, 
             * to check for SDEntry, and got permission error
              * Revert changes to env */ 
-            if(env->sdswitch_caller != -1) {
+            if((riscv_cpu_mxl(env) == MXL_RV64) &&
+                (get_field(env->satp, SATP64_MODE) == VM_SECCELL) &&
+                (env->sdswitch_caller != -1)) {
                 env->usid = env->sdswitch_caller;
                 env->sdswitch_caller = -1;
                 cause = RISCV_EXCP_SECCELL_ILL_TGT;

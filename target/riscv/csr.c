@@ -1050,6 +1050,8 @@ static RISCVException write_satp(CPURISCVState *env, int csrno,
                 tlb_flush(env_cpu(env));
             }
             env->satp = val;
+            if(get_field(val, SATP64_MODE) == VM_SECCELL)
+                env->sdswitch_caller = -1;
         }
     }
     return RISCV_EXCP_NONE;
